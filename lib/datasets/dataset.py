@@ -9,6 +9,7 @@ from torchnet.dataset import BatchDataset
 from torchnet.dataset.dataset import Dataset
 
 from torchvision.datasets import UCF101
+from torchvision import transforms
 from io import open
 
 import glob
@@ -110,18 +111,21 @@ class CricketStrokesDataset(VisionDataset):
         return self.video_clips.num_clips()
 
     def __getitem__(self, idx):
-        video, audio, info, video_idx = self.video_clips.get_clip(idx)
+        video, vid_path, stroke, audio, info, video_idx = self.video_clips.get_clip(idx)
         
         if self.train:
             label = self.samples[video_idx][1]
             label = self.classes.index(label)
         else:
-            label = None
+            label = -1
 
-        if self.transform is not None:
+        
+        if isinstance(self.transform, transforms.Compose) and video.shape[0]==1:
+            video = self.transform(np.squeeze(video, axis=0).numpy())
+        elif self.transform is not None:
             video = self.transform(video)
 
-        return video, label
+        return video, vid_path, stroke, label
 
 
 

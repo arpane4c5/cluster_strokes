@@ -26,7 +26,7 @@ def unfold(tensor, size, step, dilation=1):
         new_size = (0, size)
     return torch.as_strided(tensor, new_size, new_stride)
     
-def stroke_filter(vid_pts, stroke_tuples, clip_length):
+def stroke_filter(vid_pts, str_tuples, clip_length):
     ''' Filter out the non-stroke clips in video_pts.
     Take list of clip pts and stroke tuples and filter out the non-stroke pts.
     
@@ -34,7 +34,7 @@ def stroke_filter(vid_pts, stroke_tuples, clip_length):
     -----------
     vid_pts : list of int
         list of int e.g., [0, 1, ...., 4404]
-    stroke_tuples : list of tuples
+    str_tuples : list of stroke tuples
         e.g., [(98, 212), (356, 417), ....]
     clip_length : int
         length of frames in a clip to be sampled
@@ -43,13 +43,13 @@ def stroke_filter(vid_pts, stroke_tuples, clip_length):
     --------
     vid_pts_filt : list of list of int e.g., [[98, 99, ..., 212], [356, ....], ...]
     '''
-    stroke_tuples.reverse()
+    str_tuples.reverse()
     (start, end) = (-1, -1)
     vid_pts_filt = []
     stroke_pts = []
     for vid_pt in vid_pts:
-        if len(stroke_tuples) > 0 and vid_pt >= end:
-            start, end = stroke_tuples.pop()
+        if len(str_tuples) > 0 and vid_pt >= end:
+            start, end = str_tuples.pop()
             if len(stroke_pts) > 0:
                 vid_pts_filt.append(stroke_pts)
             stroke_pts = []
@@ -120,7 +120,7 @@ class VideoClips(object):
             collate_fn=lambda x: x)
 
         vidx = 0
-        vid_paths_new = []
+        vid_paths_new, stroke_tuples = [], []
         with tqdm(total=len(dl)) as pbar:
             for batch in dl:
                 pbar.update(1)
@@ -129,14 +129,15 @@ class VideoClips(object):
                 for batch_idx, c in enumerate(clips):
                     self.video_fps.extend([fps[batch_idx]] * len(self.strokes_list[vidx]))
                     vid_paths_new.extend([self.video_paths[vidx]] * len(self.strokes_list[vidx]))
+                    stroke_tuples.extend(self.strokes_list[vidx])
                     # return a list of list (each sublist is stroke_pts)
                     vid_pts_filt = stroke_filter(c, self.strokes_list[vidx], self.clip_len)
                     vidx +=1
                     clips = [torch.as_tensor(stroke_pts) for stroke_pts in vid_pts_filt]
                     self.video_pts.extend(clips)
                 
-                
         self.video_paths = vid_paths_new
+        self.stroke_tuples = stroke_tuples
         
 
     def _init_from_metadata(self, metadata):
@@ -252,6 +253,7 @@ class VideoClips(object):
                              "({} number of clips)".format(idx, self.num_clips()))
         video_idx, clip_idx = self.get_clip_location(idx)
         video_path = self.video_paths[video_idx]
+        stroke_tuple = self.stroke_tuples[video_idx]
         clip_pts = self.clips[video_idx][clip_idx]
         start_pts = clip_pts[0].item()
         end_pts = clip_pts[-1].item()
@@ -263,4 +265,4 @@ class VideoClips(object):
             video = video[resampling_idx]
             info["video_fps"] = self.frame_rate
         assert len(video) == self.num_frames, "{} x {}".format(video.shape, self.num_frames)
-        return video, audio, info, video_idx
+        return video, video_path, stroke_tuple, audio, info, video_idx

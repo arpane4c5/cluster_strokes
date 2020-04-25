@@ -11,6 +11,10 @@ Created on Wed Apr 15 07:51:38 2020
 import os
 import cv2
 
+# function to count the number of parameters in the model
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
 def split_dataset_files(datasetPath):
     '''Split the dataset files into training, validation and test sets.
     Only for the highlights dataset. It is assumed that all the video files 
