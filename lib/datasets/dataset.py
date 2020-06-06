@@ -114,7 +114,11 @@ class CricketStrokesDataset(VisionDataset):
         video, vid_path, stroke, audio, info, video_idx = self.video_clips.get_clip(idx)
         
         if self.train:
-            label = self.samples[video_idx][1]
+            for s in self.samples:
+                if vid_path == s[0]:
+                    label = s[1]
+                    break
+            #label = self.samples[video_idx][1]
             label = self.classes.index(label)
         else:
             label = -1

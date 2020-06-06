@@ -24,10 +24,14 @@ def extract_all_feats(vidsPath, labelsPath, nbins, mag_thresh=5):
         pixels with >mag_thresh will be considered significant and used for clustering
     nbins: int
         No. of bins in which the angles have to be divided.
+        
+    Returns:
+    --------
+    numpy array of size (nStrokes x nbins)
     """
     video_files = sorted(os.listdir(vidsPath))
     json_files = sorted(os.listdir(labelsPath))
-    all_feats = None
+    trajectories, stroke_names = [], []
     bins = np.linspace(0, 2*np.pi, (nbins+1))
     for i, v_file in enumerate(video_files):
         print('-'*60)
@@ -47,18 +51,20 @@ def extract_all_feats(vidsPath, labelsPath, nbins, mag_thresh=5):
         #print('frame_indx :: ', frame_indx)
 
         #f_loc = os.path.join(flow_numpy_path, video_name)
-        stroke_features = extract_flow_angles(os.path.join(vidsPath, v_file), frame_indx, bins, mag_thresh)
-        if all_feats is None:
-            all_feats = stroke_features
-        else:
-            all_feats = np.vstack((all_feats, stroke_features))
-        #break
-    return all_feats
+        traj, names = extract_flow_angles(os.path.join(vidsPath, v_file), \
+                                              frame_indx, bins, mag_thresh)
+
+        trajectories.append(traj)
+        stroke_names.append(names)
+        if i==0:
+            break
+    return trajectories, stroke_names
 
 def extract_flow_angles(vidFile, frame_indx, hist_bins, mag_thresh):
     '''
-    Extract optical flow maps from video vidFile for all the frames and put the angles with >mag_threshold in different 
-    bins. The bins vector is the feature representation for the stroke. 
+    Extract optical flow maps from video vidFile for all the frames and put the angles 
+    with >mag_threshold in different bins. The bins vector is the feature representation
+    for the stroke. 
     Use only the strokes given by list of tuples frame_indx.
     Parameters:
     ------
@@ -71,6 +77,9 @@ def extract_flow_angles(vidFile, frame_indx, hist_bins, mag_thresh):
     mag_thresh: int
         minimum size of the magnitude vectors that are considered (no. of pixels shifted in consecutive frames of OF)
     
+    Returns:
+    --------
+    list of stroke_feats (mean of trajectories), list of trajectories for strokes
     '''
     
     cap = cv2.VideoCapture(vidFile)
@@ -78,12 +87,12 @@ def extract_flow_angles(vidFile, frame_indx, hist_bins, mag_thresh):
         print("Capture object not opened. Aborting !!")
         sys.exit(0)
     ret = True
-    stroke_features = []
+    stroke_trajectories, names = [], []
+    prefix = vidFile.rsplit('/', 1)[1].rsplit('.', 1)[0]
     prvs, next_ = None, None
     for m, n in frame_indx:   #localization tuples
-        
-        #print("stroke {} ".format((m, n)))
-        sum_norm_mag_ang = np.zeros((len(hist_bins)-1))  # for optical flow maxFrames - 1 size
+        print("stroke {} ".format((m, n)))
+        angle_traj = []
         frameNo = m
         while ret and frameNo <= n:
             if (frameNo-m) == 0:    # first frame condition
@@ -109,19 +118,16 @@ def extract_flow_angles(vidFile, frame_indx, hist_bins, mag_thresh):
             
             #print("Mag > 5 = {}".format(np.sum(mag>THRESH)))
             pixAboveThresh = np.sum(mag>mag_thresh)
-            #use weights=mag[mag>THRESH] to be weighted with magnitudes
             #returns a tuple of (histogram, bin_boundaries)
             ang_hist = np.histogram(ang[mag>mag_thresh], bins=hist_bins)
-            sum_norm_mag_ang +=ang_hist[0]
+            angle_traj.append(ang_hist[0])
 #            if not pixAboveThresh==0:
 #                sum_norm_mag_ang[frameNo-m-1] = np.sum(mag[mag > THRESH])/pixAboveThresh
 #                sum_norm_mag_ang[(maxFrames-1)+frameNo-m-1] = np.sum(ang[mag > THRESH])/pixAboveThresh
             frameNo+=1
             prvs = next_
-        stroke_features.append(sum_norm_mag_ang/(n-m+1))
+        stroke_trajectories.append(angle_traj)
+        names.append(prefix+"_"+str(m)+"_"+str(n))
     cap.release()
     #cv2.destroyAllWindows()
-    stroke_features = np.array(stroke_features)
-    return stroke_features
-
-    
+    return stroke_trajectories, names

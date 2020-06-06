@@ -16,12 +16,29 @@ import cv2
 import csv
 from itertools import permutations
 
-
-f = None
 # save video according to their label
-def evaluate(labels, bins, thresh):
-    global f
-    flows_path = get_ordered_strokes_list()
+def evaluate(labels, stroke_names, bins, thresh, results_dir, data_path):
+    '''Receive a list of cluster assignments and write stroke videos in their 
+    respective cluster directories.
+    
+    Parameters:
+    -----------
+    labels : np.ndarray
+        1D array of cluster labels (0, 1, 2, ..)
+    stroke_names : list of list
+        list of list of stroke names (each element of type vidname_stfrm_endfrm)
+    bins : int
+        no. of bins of HOOF. Used in dest folder path.
+    thresh : float
+        magnitude threshold value of optical flow for HOOF extraction.
+    results_dir : str
+        destination directory prefix name
+    data_path : str
+        path containing the video dataset
+    
+    '''
+    #flows_path = get_ordered_strokes_list()
+    flows_path = [stroke for vid_strokes in stroke_names for stroke in vid_strokes]
 
     #flows_path = sorted(os.listdir(flows_numpy_path))
     n_clusters = max(labels) + 1
@@ -29,21 +46,40 @@ def evaluate(labels, bins, thresh):
     for i in range(n_clusters):
         ######
         try:
-            os.makedirs(os.path.join(RESULTS_DIR, "bins_"+str(bins)+"_th_"+str(thresh), str(i)))
+            os.makedirs(os.path.join(results_dir, "bins_"+str(bins)+"_th_"+str(thresh), str(i)))
         except Exception as e:
-            print("except", e)
+            print("Exception : ", e)
         #######
         for count,j in enumerate(np.where(labels==i)[0]):
             vid_data = flows_path[j].split('_')
             m, n = map(int, vid_data[-2:])
-            vid_name = vid_data[0]
-            f = ''.join(vid_name.split(' ')[2:-1])+"_"+str(m)+"_"+str(n)
-            save_video(os.path.join(DATASET, vid_name+'.avi'), m, n, i, bins, thresh)
+            vid_name = vid_data[0]            
+            #f = ''.join(vid_name.split(' ')[2:-1])+"_"+str(m)+"_"+str(n)
+            if ".avi" in vid_name or ".mp4" in vid_name:
+                src_vid = os.path.join(data_path, vid_name)
+                dest_vid = vid_name.rsplit('.', 1)[0]+"_"+str(m)+"_"+str(n)
+            else:
+                src_vid = os.path.join(data_path, vid_name+".avi")
+                dest_vid = vid_name+"_"+str(m)+"_"+str(n)
+            save_video(src_vid, dest_vid, m, n, i, bins, thresh, results_dir)
             if count==9:
                 break
 
             
 def get_frame(cap, frame_no):
+    '''Read a frame of given position from the VideoCapture Object provided.
+    Parameters:
+    -----------
+    cap : cv2.VideoCapture
+        VideoCapture object reference
+    frame_no : int
+        position from where the frame is to be read.
+        
+    Returns:
+    --------
+    np.ndarray of shape (H, W, 3)
+    
+    '''
     # get total number of frames
     totalFrames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     # check for valid frame number
@@ -55,13 +91,12 @@ def get_frame(cap, frame_no):
     print("invalid frame, ", frame_no)
     sys.exit()
 
-def save_video(filename, m, n, label, bins, thresh):
-    global f
-    eval_path = os.path.join(RESULTS_DIR, "bins_"+str(bins)+"_th_"+str(thresh), str(label))
+def save_video(src_vid, dest_vid, m, n, label, bins, thresh, results_dir):
+    eval_path = os.path.join(results_dir, "bins_"+str(bins)+"_th_"+str(thresh), str(label))
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    vid_out_path = os.path.join(eval_path, f+'.avi')
+    vid_out_path = os.path.join(eval_path, dest_vid+'.avi')
     out = cv2.VideoWriter(vid_out_path, fourcc, 25.0, (320, 180), True)
-    cap = cv2.VideoCapture(filename)
+    cap = cv2.VideoCapture(src_vid)
     if cap.isOpened():
         pass
     else:
@@ -74,11 +109,11 @@ def save_video(filename, m, n, label, bins, thresh):
     out.release()
 
 
-def get_ordered_strokes_list():
+def get_ordered_strokes_list(data_path, labels_path):
     flows_path = []
     
-    video_files = sorted(os.listdir(DATASET))
-    json_files = sorted(os.listdir(LABELS))
+    video_files = sorted(os.listdir(data_path))
+    json_files = sorted(os.listdir(labels_path))
     for i, v_file in enumerate(video_files):
         #print('-'*60)
         #print(str(i+1)+". v_file :: ", v_file)
@@ -88,7 +123,7 @@ def get_ordered_strokes_list():
         if json_file not in json_files:
             print("json file not found!")
             sys.exit(0)
-        with open(os.path.join(LABELS, json_file), 'r') as fr:
+        with open(os.path.join(labels_path, json_file), 'r') as fr:
             frame_dict = json.load(fr)
         frame_indx = list(frame_dict.values())[0]
         for m, n in frame_indx:
@@ -97,12 +132,12 @@ def get_ordered_strokes_list():
     return flows_path
 
 
-def get_accuracy(all_feats, pred_values, cluster_labels_path):
+def get_accuracy(all_feats, pred_values, cluster_labels_path, data_path, labels_path):
     # get the ground truth from file
     gt_keys, gt_values = get_cluster_labels(cluster_labels_path)
     
     # Read filenames in the same order
-    pred_keys = get_ordered_strokes_list()
+    pred_keys = get_ordered_strokes_list(data_path, labels_path)
     print("Length of pred_keys {} :: Length of gt_keys {} :: Length of pred_values {}"\
           .format(len(pred_keys), len(gt_keys), len(pred_values)))
     
