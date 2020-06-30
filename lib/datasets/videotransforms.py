@@ -2,6 +2,9 @@ import numpy as np
 import numbers
 import random
 
+import torchvision
+from torchvision import transforms
+
 class RandomCrop(object):
     """Crop the given video sequences (t x h x w) at a random location.
     Args:
@@ -100,3 +103,16 @@ class RandomHorizontalFlip(object):
 
     def __repr__(self):
         return self.__class__.__name__ + '(p={})'.format(self.p)
+
+class ToTensor:
+    def __call__(self, imgmap):
+        totensor = transforms.ToTensor()
+        return [totensor(i) for i in imgmap]
+
+class Normalize:
+    def __init__(self, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
+        self.mean = mean
+        self.std = std
+    def __call__(self, imgmap):
+        normalize = transforms.Normalize(mean=self.mean, std=self.std)
+        return [normalize(i) for i in imgmap]

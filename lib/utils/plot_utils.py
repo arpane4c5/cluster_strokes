@@ -13,7 +13,7 @@ from utils import trajectory_utils as traj_utils
 from sklearn.preprocessing import normalize
 
 
-def plot_sse_score(sse_list, x, bins, thresh, plot_dir):
+def plot_sse_score(sse_list, x, plot_dir):
     '''Plot the sum of squared error for a range of clusters. The error drops 
     as the number of clusters increases. 
     
@@ -23,10 +23,10 @@ def plot_sse_score(sse_list, x, bins, thresh, plot_dir):
     plt.ylabel("SSE")
     plt.plot(x, sse_list, label='sse score', c='r')
     plt.title('SSE score Vs No. of clusters')
-    #plt.savefig(os.path.join(plot_dir, "bins_"+str(bins)+"_th_"+str(thresh), 'sse_plot.png'))
+    #plt.savefig(os.path.join(plot_dir, 'sse_plot.png'))
     plt.show()
 
-def plot_clusters(data, labels, best_tuple, bins, thresh, plot_dir, plotname):
+def plot_clusters(data, labels, best_tuple, plot_dir, plotname):
     n_clusters = max(labels) + 1
     colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
     markers = list("12348spphH+xXdD")
@@ -42,10 +42,10 @@ def plot_clusters(data, labels, best_tuple, bins, thresh, plot_dir, plotname):
         cls_data = data[labels==n_cluster]
         plt.scatter(cls_data[:,0], cls_data[:,1], c=colors[color%8], marker = markers[color], label="C"+str(color+1))
     plt.legend(loc='upper right')
-    if plotname=='cluster_pca_ordered.png':
-        plt.xlim((-1,1))
-        plt.ylim((-1,1))
-    plt.savefig(os.path.join(plot_dir, "bins_"+str(bins)+"_th_"+str(thresh), str(n_clusters)+'_'+plotname))
+#    if plotname=='cluster_pca_ordered.png':
+#        plt.xlim((-1,1))
+#        plt.ylim((-1,1))
+    plt.savefig(os.path.join(plot_dir, str(n_clusters)+'_'+plotname))
     plt.show()
     
 def plot_trajectories3D(stroke_vecs, stroke_names):
@@ -85,3 +85,23 @@ def plot_trajectories3D(stroke_vecs, stroke_names):
         #fig.savefig(os.path.join(os.getcwd(), 'lib/visualize/graphs3D_v1', fig_name))
         plt.show()
     
+def visualize_evecs(eVals, eVecs):
+    
+    chooseVecs = [1]    # 2nd EVec at col indx 1
+    for choice in chooseVecs:
+        # get second EigenVector and visualize the sorted vertices
+        evec = eVecs[:, choice]
+        
+        idx = np.argsort(evec)
+        evec = evec[idx]
+        
+        x = list(range(evec.shape[0]))
+        y = evec.tolist()
+        plt.figure(choice)
+        plt.xlabel("Rank of x"+str(choice+1))
+        plt.ylabel("Value of x"+str(choice+1))
+        plt.plot(x , y, c='r')
+        plt.title('Components of EVec'+str(choice+1))
+        #plt.savefig(os.path.join(plot_dir, 'sse_plot.png'))
+        plt.show()
+    return

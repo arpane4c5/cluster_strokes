@@ -56,7 +56,7 @@ def extract_all_feats(vidsPath, labelsPath, nbins, mag_thresh=5):
 
         trajectories.append(traj)
         stroke_names.append(names)
-        if i==0:
+        if i==1:
             break
     return trajectories, stroke_names
 

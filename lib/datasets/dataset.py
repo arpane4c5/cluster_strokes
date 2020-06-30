@@ -53,6 +53,8 @@ class CricketStrokesDataset(VisionDataset):
                  _video_min_dimension=0, _audio_samples=0):
         super(CricketStrokesDataset, self).__init__(dataset_path)
         
+        self.frames_per_clip = frames_per_clip
+        self.step_between_clips = step_between_clips
         #assert os.path.exists(root), "Path does not exist. {}".format(root)
         assert os.path.isfile(class_ids_path), "File does not exist. {}".format(class_ids_path)
         assert os.path.exists(strokes_dir), "Path does not exist. {}".format(strokes_dir)
@@ -95,7 +97,7 @@ class CricketStrokesDataset(VisionDataset):
         Returns a dictionary of {ID: classname, ...}
         """
         if os.path.isfile(filename):
-            df = pd.read_table(filename, sep=" ", names=["id", "classname"])
+            df = pd.read_csv(filename, sep=" ", names=["id", "classname"])
             d_by_cols = df.to_dict('list')
             d_by_idx_label = dict(zip(d_by_cols['id'],
                               d_by_cols['classname']))
@@ -122,11 +124,14 @@ class CricketStrokesDataset(VisionDataset):
             label = self.classes.index(label)
         else:
             label = -1
-
         
-        if isinstance(self.transform, transforms.Compose) and video.shape[0]==1:
-            video = self.transform(np.squeeze(video, axis=0).numpy())
-        elif self.transform is not None:
+        
+        if isinstance(self.transform, transforms.Compose):
+            if self.frames_per_clip == 1:       # for single frame sequences
+                video = self.transform(np.squeeze(video, axis=0).numpy())
+            else:
+                video = torch.stack([self.transform(i) for i in video])
+        elif self.transform is not None:        # Using a third party videotransform
             video = self.transform(video)
 
         return video, vid_path, stroke, label

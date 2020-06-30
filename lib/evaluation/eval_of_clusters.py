@@ -17,7 +17,7 @@ import csv
 from itertools import permutations
 
 # save video according to their label
-def evaluate(labels, stroke_names, bins, thresh, results_dir, data_path):
+def evaluate(labels, stroke_names, results_dir, data_path):
     '''Receive a list of cluster assignments and write stroke videos in their 
     respective cluster directories.
     
@@ -25,43 +25,40 @@ def evaluate(labels, stroke_names, bins, thresh, results_dir, data_path):
     -----------
     labels : np.ndarray
         1D array of cluster labels (0, 1, 2, ..)
-    stroke_names : list of list
-        list of list of stroke names (each element of type vidname_stfrm_endfrm)
-    bins : int
-        no. of bins of HOOF. Used in dest folder path.
-    thresh : float
-        magnitude threshold value of optical flow for HOOF extraction.
+    stroke_names : list of str
+        list of stroke names (each element of type vidname_stfrm_endfrm)
     results_dir : str
         destination directory prefix name
     data_path : str
         path containing the video dataset
     
     '''
-    #flows_path = get_ordered_strokes_list()
-    flows_path = [stroke for vid_strokes in stroke_names for stroke in vid_strokes]
-
-    #flows_path = sorted(os.listdir(flows_numpy_path))
+    
     n_clusters = max(labels) + 1
     print("clusters, ", n_clusters)
     for i in range(n_clusters):
         ######
         try:
-            os.makedirs(os.path.join(results_dir, "bins_"+str(bins)+"_th_"+str(thresh), str(i)))
+            os.makedirs(os.path.join(results_dir, str(i)))
         except Exception as e:
             print("Exception : ", e)
         #######
         for count,j in enumerate(np.where(labels==i)[0]):
-            vid_data = flows_path[j].split('_')
+            vid_data = stroke_names[j].rsplit('_', 2)
             m, n = map(int, vid_data[-2:])
             vid_name = vid_data[0]            
             #f = ''.join(vid_name.split(' ')[2:-1])+"_"+str(m)+"_"+str(n)
             if ".avi" in vid_name or ".mp4" in vid_name:
-                src_vid = os.path.join(data_path, vid_name)
+                if '/' in vid_name:     # full path given
+                    src_vid = vid_name
+                    vid_name = vid_name.rsplit('/', 1)[-1]
+                else:
+                    src_vid = os.path.join(data_path, vid_name)
                 dest_vid = vid_name.rsplit('.', 1)[0]+"_"+str(m)+"_"+str(n)
             else:
                 src_vid = os.path.join(data_path, vid_name+".avi")
                 dest_vid = vid_name+"_"+str(m)+"_"+str(n)
-            save_video(src_vid, dest_vid, m, n, i, bins, thresh, results_dir)
+            save_video(src_vid, dest_vid, m, n, i, results_dir)
             if count==9:
                 break
 
@@ -91,8 +88,8 @@ def get_frame(cap, frame_no):
     print("invalid frame, ", frame_no)
     sys.exit()
 
-def save_video(src_vid, dest_vid, m, n, label, bins, thresh, results_dir):
-    eval_path = os.path.join(results_dir, "bins_"+str(bins)+"_th_"+str(thresh), str(label))
+def save_video(src_vid, dest_vid, m, n, label, results_dir):
+    eval_path = os.path.join(results_dir, str(label))
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
     vid_out_path = os.path.join(eval_path, dest_vid+'.avi')
     out = cv2.VideoWriter(vid_out_path, fourcc, 25.0, (320, 180), True)

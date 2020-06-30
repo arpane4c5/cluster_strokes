@@ -15,6 +15,19 @@ from sklearn.manifold import TSNE
 from sklearn.cluster import KMeans, DBSCAN
 
 def get_trajectory_mean(trajectories):
+    '''
+    Take a list of trajectory features and return the mean of the trajectories.
+    Parameters:
+    -----------
+    trajectories : list of list of float vectors
+        stroke features for all the vids. Each sublist is for a video, which contains
+        list of stroke features. Size is no. of videos.
+        
+    Returns:
+    --------
+    2D matrix of size N_strokes x feature_size
+    '''
+    
     all_feats = None
     for vid_strokes in trajectories:
         for stroke in vid_strokes:

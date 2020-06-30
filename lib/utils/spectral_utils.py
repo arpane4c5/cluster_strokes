@@ -12,46 +12,59 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics.pairwise import pairwise_distances
 from scipy.spatial import distance
-from sklearn.cluster import SpectralClustering
 from sklearn.preprocessing import StandardScaler, normalize 
 from sklearn.decomposition import PCA 
 from matplotlib import pyplot as plt
+from fastdtw import fastdtw
+from joblib import Parallel, delayed
+from hausdorff import hausdorff_distance
 
-def compute_affinity_matrix(trajectories):
+
+def compute_affinity_matrix(X, njobs = 1, similarity="euclidean"):
     '''
     Compute the Affinity Matrix (Adjacency matrix) for input to the Spectral 
     Clustering function.
     
     Parameters:
     -----------
-    trajectories : list of list of float vectors
-        stroke features for all the vids. Each sublist is for a video, which contains
-        list of stroke features. Size is no. of videos.
-    threshold : float
-        threshold the unnormalized values of edge distance computed.
-        
+    X : pd.DataFrame
+        DataFrame of size (nStrokes, nMaxFeats). Rows have vectors of trajectory points
+        Many will be NA cells due to different stroke lengths.
+    njobs : int
+        Parallelize over these many cores
+    similarity : str
+        type of similarity to be used for comparing two different stroke trajectories
+        Types : 
+            'euclidean' : match the vectors based on sliding window L2 distances
+            'dtw' : Dynamic Time Warping based matching
+            ''
+    
     Returns:
     --------
-    affinity_mat: 2D Numpy array with 
+    affinity_mat: 2D Numpy array with similarity values as given in the parameter
     
     '''
-    X = [stroke for vid_strokes in trajectories for stroke in vid_strokes]
-    
-    #for row in range(len(X)):
-    
-#    # Convert to list and Add padding with with 'inf' values
-#    max_len = max([len(stroke) for stroke in X])
-    
-    X = pd.DataFrame(X)
+
+    if njobs > 1:
+        print("Parallel computation of similarity with nJobs : {} ...".format(njobs))    
+        batch_out = Parallel(n_jobs=njobs)(delayed(compute_pair_similarity) \
+                         (X.iloc[i, :], X.iloc[j, :], similarity) \
+                         for i in range(len(X)) \
+                         for j in range(len(X)) if i<j)
     
     # form matrix 
     affinity_mat = np.zeros((len(X), len(X)))
-    
+    k = 0
     for i in range(len(X)):
         print("Stroke {} ...".format(i+1))
         for j in range(len(X)):
             if i<j:
-                affinity_mat[i,j]=compute_pair_similarity(X.iloc[i,:], X.iloc[j,:])
+                if njobs > 1:
+                    affinity_mat[i,j]= batch_out[k]
+                    k +=1
+                else:
+                    affinity_mat[i,j] = compute_pair_similarity(X.iloc[i,:], \
+                                        X.iloc[j,:], similarity)
             elif i>j:
                 affinity_mat[i,j] = affinity_mat[j,i]
     
@@ -60,9 +73,9 @@ def compute_affinity_matrix(trajectories):
     
     return affinity_mat
 
-def similarity_function(t1, t2):
-    '''Function takes two vectors and finds the similarity between them, such as 
-    Euclidean distance etc.
+def normalized_l2(t1, t2):
+    '''Function takes two sequence of vectors and finds the Euclidean distance between
+    corresponding vectors. Summed and normalized by length of sequence
     
     Parameters:
     -----------
@@ -77,16 +90,35 @@ def similarity_function(t1, t2):
     assert t1.shape[0] == t2.shape[0], "Size doesn't match {} : {}".format(\
                    t1.shape[0], t2.shape[0])
     
+    t1 = np.asarray(t1.tolist())
+    t2 = np.asarray(t2.tolist())
     # return dot product, try cosine similarity
     similarity = 0
     for i in range(t1.shape[0]):
 #        similarity += t1[i].dot(t2[i])
-        similarity += distance.euclidean(t1.iloc[i], t2.iloc[i])
+        similarity += distance.euclidean(t1[i, :], t2[i, :])
     # divide by vector size to normalize.
-    return similarity/t1.shape[0]
+    return similarity/(t1.shape[0]*t1.shape[1])
+
+def compute_hausdorff_similarity(t1, t2):
+    
+    # convert Series object to 2D matrix 
+    t1 = np.asarray(t1.tolist())
+    t2 = np.asarray(t2.tolist())
+    return hausdorff_distance(t1, t2, distance="euclidean")
     
 
-def compute_pair_similarity(t1, t2):
+def compute_dtw_similarity(t1, t2):
+    t1 = t1.dropna()
+    t2 = t2.dropna()
+    
+    t1 = np.stack(t1)
+    t2 = np.stack(t2)
+    
+    traj_dist, _ = fastdtw(t1, t2, dist = distance.euclidean)
+    return traj_dist
+
+def compute_pair_similarity(t1, t2, similarity="euclidean"):
     '''
     Pass two trajectories (as pandas Series) and get similarity between the two. 
     The similarity function to produce high values for similar trajectories and 
@@ -101,16 +133,26 @@ def compute_pair_similarity(t1, t2):
         
     max_len, min_len = max_t.shape[0], min_t.shape[0]
     similarities = []
-    for i in range(max_len - min_len +1):
-        similarities.append(similarity_function(max_t.iloc[i:(i+min_len)], min_t))
+    if similarity == 'euclidean':
+        # maybe mean of first and last window placement for partial mapping
+        #for i in range(max_len - min_len +1):
+        sim1 = normalized_l2(max_t.iloc[:min_len], min_t)
+        sim2 = normalized_l2(max_t.iloc[(max_len-min_len):], min_t)
+        similarities.append((sim1 + sim2) / 2.)
+        #    break  # comment out to run a sliding window approach and return max or min
+    elif similarity == 'dtw':
+        similarities.append(compute_dtw_similarity(t1, t2) / (min_len*min_t[0].shape[0]) )
+    elif similarity == 'hausdorff':
+        similarities.append(compute_hausdorff_similarity(t1, t2) / (min_len*min_t[0].shape[0]))
         
-    return min(similarities)  # take min if similarity is L2 Distance
+        
+    return similarities[0]  # take min if similarity is L2 Distance
     # Each t is a Series object with t1.shape (120,) and t2.shape (87,)
     # Each element of Series is numpy vector of bins size
     # run over the two array lists 
 
 
-def spectral(all_feats, trajectories, nclusters, threshold):
+def spectral_plot(all_feats, labels, nclusters, threshold):
     # Preprocessing the data to make it visualizable 
       
     # Scaling the Data 
@@ -130,29 +172,6 @@ def spectral(all_feats, trajectories, nclusters, threshold):
     X_principal.columns = ['P1', 'P2'] 
       
     X_principal.head() 
-
-    # affinity mat with normalized rows (rows summed to 1, diag elements 0)
-    affinity_mat = compute_affinity_matrix(trajectories)
-    
-    # Threshold the affinity_mat n
-    affinity_mat_thr = (affinity_mat < threshold) * 1.
-    
-    for ncluster in nclusters:
-        spectral_model = SpectralClustering(n_clusters=ncluster, affinity='precomputed')
-        labels = spectral_model.fit_predict(affinity_mat)
-    
-#    # Building the clustering model 
-#    spectral_model_rbf = SpectralClustering(n_clusters = 3, affinity ='rbf') 
-#    
-#    # Training the model and Storing the predicted cluster labels 
-#    labels_rbf = spectral_model_rbf.fit_predict(X_principal)
-#    
-#    
-#    # Building the clustering model 
-#    spectral_model_nn = SpectralClustering(n_clusters = 3, affinity ='nearest_neighbors') 
-#      
-#    # Training the model and Storing the predicted cluster labels 
-#    labels_nn = spectral_model_nn.fit_predict(X_principal) 
 
     
     # Building the label to colour mapping 
@@ -181,4 +200,4 @@ def spectral(all_feats, trajectories, nclusters, threshold):
 #    plt.scatter(X_principal['P1'], X_principal['P2'], c = cvec_nn) 
 #    plt.legend((b, y, g), ('Label 0', 'Label 1', 'Label 2')) 
 #    plt.show() 
-    return labels
+#    return labels

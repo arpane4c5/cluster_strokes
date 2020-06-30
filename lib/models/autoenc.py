@@ -15,8 +15,6 @@ import numpy as np
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 #device = torch.device('cpu')
 
-sequence_length = 6
-
 class EncoderRNN(nn.Module):
 
     def __init__(self, input_size, hidden_size, num_layers, bidirectional):
@@ -72,15 +70,15 @@ class DecoderRNN(nn.Module):
 
 
 class AutoEncoderRNN(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers, 
+    def __init__(self, input_size, hidden_size, num_layers, sequence_length = 6,
                  bidirectional=False):
         super(AutoEncoderRNN, self).__init__()
-        #self.sequence_length = sequence_length
+        self.sequence_length = sequence_length
         self.encoder = EncoderRNN(input_size, hidden_size, num_layers, bidirectional)
         self.decoder = DecoderRNN(hidden_size, input_size, num_layers, bidirectional)
 
     def forward(self, x):
-        encoded_x = self.encoder(x).expand(-1, sequence_length, -1)
+        encoded_x = self.encoder(x).expand(-1, self.sequence_length, -1)
         decoded_x = self.decoder(encoded_x)
 
         return decoded_x
