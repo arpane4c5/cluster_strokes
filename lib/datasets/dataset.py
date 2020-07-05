@@ -130,7 +130,8 @@ class CricketStrokesDataset(VisionDataset):
             if self.frames_per_clip == 1:       # for single frame sequences
                 video = self.transform(np.squeeze(video, axis=0).numpy())
             else:
-                video = torch.stack([self.transform(i) for i in video])
+                video = self.transform(video)
+                #video = torch.stack([self.transform(i) for i in video])
         elif self.transform is not None:        # Using a third party videotransform
             video = self.transform(video)
 
