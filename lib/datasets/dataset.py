@@ -36,11 +36,14 @@ class CricketStrokesDataset(VisionDataset):
         step_between_clips (int, optional): number of frames between each clip.
         train (bool, optional): if ``True``, creates a dataset from the train split,
             otherwise from the ``test`` split.
-        transform (callable, optional): A function/transform that  takes in a TxHxWxC video
-            and returns a transformed version.
+        framewiseTransform (bool, optional): If the transform has to be applied
+            to each frame separately and resulting frames are to be stacked.
+        transform (callable, optional): A function/transform that takes in a HxWxC video
+            and returns a transformed version (CxHxW) for a frame. Additional dimension
+            for a video level transform
 
     Returns:
-        video (Tensor[T, H, W, C]): the `T` video frames
+        video (Tensor[T, H, W, C]): the `T` video frames (without transform)
         audio(Tensor[K, L]): the audio frames, where `K` is the number of channels
             and `L` is the number of points
         label (int): class of the video clip
@@ -48,9 +51,9 @@ class CricketStrokesDataset(VisionDataset):
 
     def __init__(self, videos_list, dataset_path, strokes_dir, class_ids_path, 
                  frames_per_clip, step_between_clips=1, train=True, 
-                 frame_rate=None, transform=None, _precomputed_metadata=None, 
-                 num_workers=1, _video_width=0, _video_height=0, 
-                 _video_min_dimension=0, _audio_samples=0):
+                 frame_rate=None, framewiseTransform=True, transform=None, 
+                 _precomputed_metadata=None, num_workers=1, _video_width=0, 
+                 _video_height=0, _video_min_dimension=0, _audio_samples=0):
         super(CricketStrokesDataset, self).__init__(dataset_path)
         
         self.frames_per_clip = frames_per_clip
@@ -78,6 +81,7 @@ class CricketStrokesDataset(VisionDataset):
         # self.video_clips_metadata = video_clips.metadata  # in newer torchvision
         # self.indices = self._select_fold(video_list, annotation_path, fold, train)
         # self.video_clips = video_clips.subset(self.indices)
+        self.framewiseTransform = framewiseTransform
         self.transform = transform
         
     def read_stroke_labels(self, video_list):
@@ -125,14 +129,18 @@ class CricketStrokesDataset(VisionDataset):
         else:
             label = -1
         
-        
-        if isinstance(self.transform, transforms.Compose):
-            if self.frames_per_clip == 1:       # for single frame sequences
-                video = self.transform(np.squeeze(video, axis=0).numpy())
-            else:
-                video = torch.stack([self.transform(i) for i in video])
-        elif self.transform is not None:        # Using a third party videotransform
-            video = self.transform(video)
+        if self.transform is not None:
+            if self.framewiseTransform:
+                if isinstance(self.transform, transforms.Compose):
+                    # transform frame-wise (takes input as HxWxC)
+                    video = torch.stack([self.transform(i) for i in video])
+            else:   # clip level transform (takes input as TxHxWxC)
+                video = self.transform(video)
+            
+        if isinstance(video, list):
+            video = torch.stack(video)
+#        if self.frames_per_clip == 1:       # for single frame sequences
+#            video = np.squeeze(video, axis=0)
 
         return video, vid_path, stroke, label
 

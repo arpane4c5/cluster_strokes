@@ -59,14 +59,15 @@ if not os.path.exists(DATASET):
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 log_dir = "checkpoints"
-N_EPOCHS = 10
-SEQ_SIZE = 6
+N_EPOCHS = 20
+SEQ_SIZE = 19
+CLIP_SIZE = 16
 INPUT_SIZE = 2048
 HIDDEN_SIZE = 32#64#1024
 NUM_LAYERS = 2
-BATCH_SIZE = 4 # set to the number of images of a seqence # 36
+BATCH_SIZE = 16 # set to the number of images of a seqence # 36
 #model_path = os.path.join(log_dir, "28_3_batsman_lstm_autoencoder_model_wholeDataset.pt")
-model_checkpoint = os.path.join(log_dir, 'autoenc_resnet50_ep')
+model_checkpoint = 'autoenc_gru_resnet3D_ep'
 
 # takes a model to train along with dataset, optimizer and criterion
 def train(model, datasets_loader, optimizer, scheduler, criterion, extractor, nEpochs,
@@ -106,21 +107,31 @@ def train(model, datasets_loader, optimizer, scheduler, criterion, extractor, nE
                 # get inputs of shape (B, S, H, W, C). Convert to (B*S, C, H, W)
                 #inputs = inputs.permute(0, 4, 1, 2, 3).float()     # For 3D backbone
 #                inputs = inputs.permute(0, 1, 4, 2, 3).view(-1, C, H, W)
-                inputs = extractor.get_vec(inputs.view(-1, C, H, W))
-#                # convert to start frames and end frames from tensors to lists
-#                stroke = [s.tolist() for s in stroke]
-#                inputs_lst, batch_stroke_names = autoenc_utils.separate_stroke_tensors(inputs, \
-#                                                                        vid_path, stroke)
+                # Extract spatial features using 2D ResNet, one batch all sequences at a time
+                if isinstance(extractor, Img2Vec):
+                    inputs = torch.stack([extractor.get_vec(x) for x in inputs])
+                # Extract spatio-temp features using 3D ResNet, one clip of all batches at a time. 
+                else:
+                    # for SEQ_LEN >= 16, iterate on sequences of 16 frame window clips
+                    seq_input = []
+#                    inputs = inputs.permute(0, 2, 1, 3, 4)
+#                    seq_input = [extractor.get_vec(inputs[:,:,sl:(sl+CLIP_SIZE), ...]) \
+#                                                   for sl in range(SL-CLIP_SIZE+1)]
+                    for sl in range(SL-CLIP_SIZE+1):
+                        input_blob = inputs[:, sl:(sl+CLIP_SIZE), ...].clone()
+                        input_blob = input_blob.permute(0, 2, 1, 3, 4)
+                        seq_input.append(extractor.get_vec(input_blob))
+                    seq_input = torch.cat(seq_input, dim=1)
         
-                inputs = inputs.reshape(-1, SEQ_SIZE, INPUT_SIZE).to(device)
+                seq_input = seq_input.reshape(-1, SEQ_SIZE-CLIP_SIZE+1, INPUT_SIZE).to(device)
 
                 optimizer.zero_grad()
 
                 with torch.set_grad_enabled(phase == 'train'):
-                    outputs = model(inputs)
+                    outputs = model(seq_input)
 
-                    inv_idx = torch.arange(SEQ_SIZE - 1, -1, -1).long()
-                    loss = criterion(outputs, inputs[:, inv_idx, :])
+                    inv_idx = torch.arange(SEQ_SIZE - CLIP_SIZE, -1, -1).long()
+                    loss = criterion(outputs, seq_input[:, inv_idx, :])
 
                     if phase == 'train':
                         loss.backward()
@@ -128,27 +139,13 @@ def train(model, datasets_loader, optimizer, scheduler, criterion, extractor, nE
 
                 net_loss += loss.item() * inputs.size(0)
                 
-                
-#                preds = model(x)
-#                curr_batch = int(preds.size(0)/SEQ_SIZE)
-                # y is [batch, 1] , preds should be [batch, 2]
-                # for gru sequences preds can be [batch, seq, 2]
-#                if FRAME_LABELS:
-#                    loss = criterion(preds, y.view(curr_batch * SEQ_SIZE))
-#                    accuracy += get_accuracy(preds, y.view(curr_batch * SEQ_SIZE))
-#                else:
-#                    loss = criterion(preds, y[:, 0])
-#                    accuracy += get_accuracy(preds, y[:, 0])
-                #print(preds, y)
-#                net_loss += loss.data.cpu().numpy()
-                
 #                print("Phase : {} :: Batch : {} :: Loss : {} :: Accuracy : {}"\
 #                          .format(phase, (i+1), net_loss, accuracy))
 #                if phase == 'train':
 #                    optimizer.zero_grad()
 #                    loss.backward()
 #                    optimizer.step()
-                if (i+1) == 500:
+                if (i+1) == 100:
                     break
 #            accuracy = fabs(accuracy)/len(datasets_loader[phase].dataset)
             accuracy = fabs(accuracy)/(BATCH_SIZE*SEQ_SIZE*(i+1))
@@ -179,7 +176,7 @@ def save_model_checkpoint(model, optimizer, epoch, opt, win=16, use_gpu=True):
     # Save only the model params
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
-    name = os.path.join(log_dir, 'autoenc_resnet50_ep'+str(epoch)+"_w"+str(win)+"_"+opt+".pt")
+    name = os.path.join(log_dir, model_checkpoint+str(epoch)+"_w"+str(win)+"_"+opt+".pt")
     torch.save({
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
@@ -189,7 +186,7 @@ def save_model_checkpoint(model, optimizer, epoch, opt, win=16, use_gpu=True):
     
 def load_saved_checkpoint(model, optimizer, epoch, opt, win):
     assert os.path.exists(log_dir), "Checkpoint path does not exist."
-    name = os.path.join(log_dir, 'autoenc_resnet50_ep'+str(epoch)+"_w"+str(win)+"_"+opt+".pt")
+    name = os.path.join(log_dir, model_checkpoint+str(epoch)+"_w"+str(win)+"_"+opt+".pt")
     checkpoint = torch.load(name)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -205,7 +202,7 @@ def load_saved_checkpoint(model, optimizer, epoch, opt, win):
 
 # save training stats
 def save_stats_dict(stats):
-    with open(os.path.join(log_dir, 'stats.pickle'), 'wb') as fr:
+    with open(os.path.join(log_dir, model_checkpoint+'_stats.pickle'), 'wb') as fr:
         pickle.dump(stats, fr, protocol=pickle.HIGHEST_PROTOCOL)
     return None
 
@@ -245,31 +242,34 @@ if __name__ == '__main__':
     
     ###########################################################################
     # Create a Dataset
-    data_transforms = transforms.Compose([transforms.ToPILImage(),
-                                          transforms.Resize((224, 224)),
-                                          transforms.ToTensor(),
-                                          transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                                                               std=[0.229, 0.224, 0.225]),])
-
-    train_transforms = transforms.Compose([videotransforms.RandomCrop(224),
-                                           videotransforms.Normalize(),
-                                           videotransforms.ToTensor(),
-                                           #videotransforms.RandomHorizontalFlip(),
-    ])
-    test_transforms = transforms.Compose([videotransforms.CenterCrop(224),
+#    data_transforms = transforms.Compose([transforms.ToPILImage(),
+#                                          transforms.Resize((224, 224)),
+#                                          transforms.ToTensor(),
+#                                          transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+#                                                               std=[0.229, 0.224, 0.225]),])
+    # Clip level transform. Use this with framewiseTransform flag turned off
+    clip_transform = transforms.Compose([videotransforms.CenterCrop(224),
+                                         videotransforms.ToPILClip(), 
+                                         videotransforms.Resize((112, 112)),
+#                                         videotransforms.RandomCrop(112), 
+                                         videotransforms.ToTensor(), 
                                          videotransforms.Normalize(),
-                                           videotransforms.ToTensor(),])
+                                        #videotransforms.RandomHorizontalFlip(),\
+                                        ])
     
     # Prepare datasets and dataset loaders (training and validation/testing)
     train_dataset = CricketStrokesDataset(train_lst, DATASET, LABELS, CLASS_IDS, 
-                                          frames_per_clip=SEQ_SIZE, train=True, 
-                                          transform=data_transforms)
+                                          frames_per_clip=SEQ_SIZE, train=True,
+                                          framewiseTransform=False,
+                                          transform=clip_transform)
 #    train_dataset = CricketStrokesDataset(train_lst, DATASET, LABELS, CLASS_IDS, 
 #                                          frames_per_clip=1, train=True, 
 #                                          transform=data_transforms)
     val_dataset = CricketStrokesDataset(val_lst, DATASET, LABELS, CLASS_IDS, 
-                                          frames_per_clip=SEQ_SIZE, train=False, 
-                                          transform=data_transforms)    
+                                          frames_per_clip=SEQ_SIZE, 
+                                          step_between_clips=int(SEQ_SIZE/2), train=False, 
+                                          framewiseTransform=False,
+                                          transform=clip_transform)
 
     train_loader = DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     val_loader = DataLoader(dataset=val_dataset, batch_size=BATCH_SIZE, shuffle=False)
@@ -277,8 +277,14 @@ if __name__ == '__main__':
     data_loader = {'train': train_loader, 'test': val_loader}
 
     ###########################################################################
+    # Get the ResNet3D feature extractor and retrieve the output dimension from it
+    extractor = Clip2Vec()
+    INPUT_SIZE = extractor.layer_output_size
+#    extractor = Img2Vec()
+    
+    ###########################################################################
     # Create a model
-    model = autoenc.AutoEncoderRNN(INPUT_SIZE, HIDDEN_SIZE, NUM_LAYERS)
+    model = autoenc.AutoEncoderRNN(INPUT_SIZE, HIDDEN_SIZE, NUM_LAYERS, SEQ_SIZE-CLIP_SIZE+1)
 #    print("Loading model ...")
 #    model.load_state_dict(torch.load(model_path))
     
@@ -300,17 +306,15 @@ if __name__ == '__main__':
     ###########################################################################
     #####################################################################
     # Load checkpoint model and optimizer state
-#    s_epoch = 0
-#    for i in range(N_EPOCHS, 0, -1):    
-#        if os.path.isfile(model_checkpoint+str(i)+"_w"+str(SEQ_SIZE)+"_Adam.pt"):
-#            model, optimizer, s_epoch = load_saved_checkpoint(model, optimizer, i, \
-#                                                              "Adam", SEQ_SIZE)
-#            break
+    s_epoch = 0
+    for i in range(N_EPOCHS, 0, -1):    
+        if os.path.isfile(os.path.join(log_dir, model_checkpoint+str(i)+"_w"+str(SEQ_SIZE)+"_Adam.pt")):
+            model, optimizer, s_epoch = load_saved_checkpoint(model, optimizer, i, \
+                                                              "Adam", SEQ_SIZE)
+            break
 
     #####################################################################
     
-#    extractor = Clip2Vec('resnet18')
-    extractor = Img2Vec()
     start = time.time()
     s = start
     
@@ -333,11 +337,25 @@ if __name__ == '__main__':
     print("Total Batches : {} :: BATCH_SIZE : {}".format(val_loader.__len__(), BATCH_SIZE))
 #    assert BATCH_SIZE % SEQ_SIZE == 0, "BATCH_SIZE should be a multiple of SEQ_SIZE"
     for bno, (inputs, vid_path, stroke, _) in enumerate(val_loader):
+        
         print("Batch No : {}".format(bno))
-        (C, H, W) = inputs.shape[-3:]
-        # inputs of size (B, SL, C, H, W) for SL>1 or (B, C, H, W) fpr SL=1
-        # stack after feature extraction to shape (B, SL, FeatWidth)
-        inputs = torch.stack([extractor.get_vec(x.view(-1, C, H, W)) for x in inputs])
+        (SL, C, H, W) = inputs.shape[-4:]
+        # inputs of size (B, SL, C, H, W) for SL>=1 or (B, C, H, W) fpr SL=1
+        # stack after feature extraction to shape (B, SL-CLIP_SIZE, FeatWidth)
+        if isinstance(extractor, Img2Vec):
+            inputs = torch.stack([extractor.get_vec(x) for x in inputs])
+        # Extract spatio-temporal features from clip using 3D ResNet
+        else:
+            # for SEQ_LEN >= 16, iterate on sequences of 16 frame window clips
+            seq_input = []
+            for sl in range(SL-CLIP_SIZE+1):
+                input_blob = inputs[:, sl:(sl+CLIP_SIZE), ...].clone()
+                input_blob = input_blob.permute(0, 2, 1, 3, 4)
+                seq_input.append(extractor.get_vec(input_blob))
+            inputs = torch.cat(seq_input, dim=1)
+            
+        inputs = inputs.reshape(-1, SEQ_SIZE-CLIP_SIZE+1, INPUT_SIZE).to(device)
+            
         # convert to start frames and end frames from tensors to lists
         stroke = [s.tolist() for s in stroke]
         
@@ -358,34 +376,33 @@ if __name__ == '__main__':
                     stroke_names.append(prev_stroke)
                     stroke_traj = []
             
-#            enc_output = model.encoder(enc_input.to(device))
-#            enc_output = enc_output.squeeze(axis=1).cpu().data.numpy()
-            enc_output = enc_input.view(enc_input.shape[0], -1).cpu().data.numpy()
+            enc_output = model.encoder(enc_input.to(device))
+            enc_output = enc_output.squeeze(axis=1)
+            enc_output = enc_output.view(enc_output.shape[0], -1).cpu().data.numpy()
             # convert to [[[stroke1(size 32 each) ... ], [], ...], [ [], ... ]]
             stroke_traj.extend([enc_output[i, :] for i in range(enc_output.shape[0])])
             prev_stroke = batch_stroke_names[enc_idx]
-#        if num_strokes ==2:
-#            break
+        if num_strokes >= 20:
+            break
             
     # for last batch
     if len(stroke_traj) > 0 :
         trajectories.append(stroke_traj)
         stroke_names.append(batch_stroke_names[-1])
-        
-        
+                
     trajectories, stroke_names = autoenc_utils.group_strokewise(trajectories, stroke_names)
     #stroke_vecs, stroke_names =  aggregate_outputs(sequence_outputs, seq_stroke_names)
     #stroke_vecs = [stroke.cpu().data.numpy() for stroke in stroke_vecs]
     
     # save to disk
-    np.save("trajectories_resnet50_pre.npy", trajectories)
-    with open('stroke_names_resnet50_pre.pkl', 'wb') as fp:
-        pickle.dump(stroke_names, fp)
-
-    # read the files from disk
-    trajectories = np.load("trajectories_resnet50_pre.npy")
-    with open('stroke_names_resnet50_pre.pkl', 'rb') as fp:
-        stroke_names = pickle.load(fp)
+#    np.save("trajectories_resnet50_pre.npy", trajectories)
+#    with open('stroke_names_resnet50_pre.pkl', 'wb') as fp:
+#        pickle.dump(stroke_names, fp)
+#
+#    # read the files from disk
+#    trajectories = np.load("trajectories_resnet50_pre.npy")
+#    with open('stroke_names_resnet50_pre.pkl', 'rb') as fp:
+#        stroke_names = pickle.load(fp)
     
     # plot the strokes as sequence of points
     plot_utils.plot_trajectories3D(trajectories, stroke_names)

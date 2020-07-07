@@ -45,21 +45,30 @@ class Img2Vec():
     
 class Clip2Vec():
 
-    def __init__(self, network, model_path=''):
+    def __init__(self, model_path=None):
 
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-        self.backbone, params = select_resnet(network, track_running_stats=False)
+        #self.backbone, params = select_resnet(network, track_running_stats=False)
+        
+        self.model = torchvision.models.video.r3d_18(pretrained=True, progress=True)
+        
+        self.extraction_layer = self.model._modules.get('avgpool')
+        
+#        self.backbone = nn.Sequential(*image_modules)
+        params = {'feature_size' : self.model._modules.get('fc').in_features}
+        if model_path is not None:
+            self.backbone = torch.load(model_path)
 #        if torch.cuda.is_available():
 #            self.backbone = torch.load(model_path) # because the model was trained on a cuda machine
 #        else:
 #            self.backbone = torch.load(model_path, map_location='cpu')
 
 #        self.extraction_layer = self.backbone.layer4[1].bn2
-        self.layer_output_size = 256
+        self.layer_output_size = params['feature_size']
 
-        self.backbone = self.backbone.to(self.device)
-        self.backbone.eval()
+        self.model = self.model.to(self.device)
+        self.model.eval()
 
 
     def get_vec(self, clip):
@@ -68,15 +77,15 @@ class Clip2Vec():
 
         num_clips = clip.size(0)
 
-#        my_embedding = torch.zeros(num_clips, self.layer_output_size, 1, 1)
+        my_embedding = torch.zeros(num_clips, self.layer_output_size, 1, 1, 1)
 
-#        def copy_data(m, i, o):
-#            my_embedding.copy_(o.data)
-#
-#        h = self.extraction_layer.register_forward_hook(copy_data)
-        h_x = self.backbone(clip)
-#        h.remove()
-        return h_x.view(num_clips, self.layer_output_size, 1, 1)
+        def copy_data(m, i, o):
+            my_embedding.copy_(o.data)
 
-#        return my_embedding.view(num_clips, -1)
+        h = self.extraction_layer.register_forward_hook(copy_data)
+        h_x = self.model(clip)
+        h.remove()
+#        return h_x.view(num_clips, self.layer_output_size, 1, 1)
+
+        return my_embedding.view(num_clips, 1, -1)
     

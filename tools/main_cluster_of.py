@@ -37,7 +37,7 @@ if os.path.exists("/opt/datasets/cricket/ICC_WT20"):
     LABELS = "/home/arpan/VisionWorkspace/shot_detection/supporting_files/sample_set_labels/sample_labels_shots/ICC WT20"
     DATASET = "/opt/datasets/cricket/ICC_WT20"
 
-model_path = "checkpoints/28_3_batsman_lstm_autoencoder_model_wholeDataset.pt"
+model_path = "checkpoints/autoenc_gru_resnet50_ep10_w6_Adam.pt"
 SEQ_SIZE = 6
 INPUT_SIZE = 2048
 HIDDEN_SIZE = 32#64#1024
@@ -50,8 +50,8 @@ def get_autoenc_kmeans(dest_dir):
     # Extract autoencoder features 
     trajectories, stroke_names = autoenc_feats.extract_sequence_feats(model_path, \
                                 DATASET, LABELS, BATCH_SIZE, SEQ_SIZE, INPUT_SIZE, \
-                                HIDDEN_SIZE, NUM_LAYERS, partition='all', nstrokes=-1)
-    
+                                HIDDEN_SIZE, NUM_LAYERS, partition='all', nstrokes=50)
+#    
     destPath = dest_dir
     if not os.path.exists(destPath):
         os.makedirs(destPath)
@@ -459,7 +459,7 @@ if __name__=='__main__':
     spect_dest = 'res_OF_spec'
     kmeans_dest = 'res_OF_kmeans'
 #    get_autoenc_spectral("res_autoenc_seq"+str(SEQ_SIZE))
-    get_autoenc_kmeans("res_autoenc_seq"+str(SEQ_SIZE))    
+    get_autoenc_kmeans("res_autoenc_gru_seq"+str(SEQ_SIZE))    
 #    get_hoof_spectral(spect_dest)
 #    get_hoof_kmeans(kmeans_dest)
     
