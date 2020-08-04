@@ -133,6 +133,13 @@ def get_accuracy(all_feats, pred_values, cluster_labels_path, data_path, labels_
     # get the ground truth from file
     gt_keys, gt_values = get_cluster_labels(cluster_labels_path)
     
+    if '.avi' in gt_keys[0] or '.mp4' in gt_keys[0]:
+        gt_keys = [s.replace('.avi', '') for s in gt_keys]
+        gt_keys = [s.replace('.mp4', '') for s in gt_keys]
+    
+    if min(gt_values) == 1:
+        gt_values = [v-1 for v in gt_values]
+    
     # Read filenames in the same order
     pred_keys = get_ordered_strokes_list(data_path, labels_path)
     print("Length of pred_keys {} :: Length of gt_keys {} :: Length of pred_values {}"\

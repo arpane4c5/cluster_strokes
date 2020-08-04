@@ -1,3 +1,4 @@
+import os
 import torch
 from models.select_backbone import select_resnet
 import torchvision
@@ -45,7 +46,7 @@ class Img2Vec():
     
 class Clip2Vec():
 
-    def __init__(self, model_path=None):
+    def __init__(self, model_path=None, nclasses=5):
 
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -53,6 +54,18 @@ class Clip2Vec():
         
         self.model = torchvision.models.video.r3d_18(pretrained=True, progress=True)
         
+        if model_path is not None:    
+            inp_feat_size = self.model.fc.in_features
+            self.model.fc = nn.Linear(inp_feat_size, nclasses)
+            self.model = self.model.to(self.device)
+    
+            # load checkpoint:
+            if os.path.isfile(model_path):
+                print("Loading weights : {}".format(model_path))
+                self.model.load_state_dict(torch.load(model_path))
+        # Evaluate using model
+        for ft in self.model.parameters():
+            ft.requires_grad = False
         self.extraction_layer = self.model._modules.get('avgpool')
         
 #        self.backbone = nn.Sequential(*image_modules)
