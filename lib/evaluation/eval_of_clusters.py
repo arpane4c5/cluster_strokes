@@ -195,7 +195,6 @@ def assign_clusters(perm_tuple, labs):
     return temp
     
     
-    
 def get_cluster_labels(cluster_labels_path):
     labs_keys = []
     labs_values = []
@@ -209,3 +208,26 @@ def get_cluster_labels(cluster_labels_path):
             line_count += 1
         print("Read {} ground truth stroke labels from file.".format(line_count))
     return labs_keys, labs_values
+
+
+def create_confusion_matrix(best_perm, pred_list, gt_list, nclasses):
+    
+    # change predicted categories for best permutation tuples
+    permuted_pred_list = [-1]*len(pred_list)
+    for i, pred in enumerate(pred_list):
+        permuted_pred_list[i] = best_perm[pred]
+    
+    # create a confusion matrix
+    confusion_mat = np.zeros((nclasses, nclasses))
+    correct = 0
+    for i,true_val in enumerate(gt_list):
+        if permuted_pred_list[i] == true_val:
+            correct+=1
+        confusion_mat[permuted_pred_list[i], true_val]+=1
+    print('#'*30)
+    print("Clustering Results:")
+    print("%d/%d Correct" % (correct, len(permuted_pred_list)))
+    print("Accuracy = {} ".format( float(correct) / len(permuted_pred_list)))
+    print("Confusion matrix")
+    print(confusion_mat)
+    return (float(correct) / len(permuted_pred_list))

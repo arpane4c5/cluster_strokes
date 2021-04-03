@@ -11,6 +11,26 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from utils import trajectory_utils as traj_utils
 from sklearn.preprocessing import normalize
+from sklearn.neighbors import NearestNeighbors
+
+
+def plot_pca_explained_variance(cum_ex_var, n_components, plot_dir):
+    '''Plot the cumulative explained variance ratio given by the principal components.
+    
+    '''
+    # find cumulative variance values
+    x = range(1, n_components+1)
+    plt.figure(2)
+    plt.ticklabel_format(style='plain', axis='x', useOffset=False)
+    plt.xlabel("No. of Principal Components")
+    plt.ylabel("Percentage Variation")
+    plt.plot(x, cum_ex_var, label='Explained Variance Ratio', c='r')
+    plt.xticks(x)
+    plt.title('Variance Ratio Vs No. of Principal Components')
+    plt.ylim(bottom=0, top=1)
+    plt.savefig(os.path.join(plot_dir, 'variance_ratio.png'), dpi=300)
+#    plt.show()
+    plt.close()
 
 
 def plot_sse_score(sse_list, x, plot_dir):
@@ -23,8 +43,48 @@ def plot_sse_score(sse_list, x, plot_dir):
     plt.ylabel("SSE")
     plt.plot(x, sse_list, label='sse score', c='r')
     plt.title('SSE score Vs No. of clusters')
-    #plt.savefig(os.path.join(plot_dir, 'sse_plot.png'))
-    plt.show()
+    plt.savefig(os.path.join(plot_dir, 'sse_plot.png'), dpi=300)
+#    plt.show()
+    plt.close()
+    
+def plot_optimum_eps(feats, plot_dir):
+    '''We find a suitable value for epsilon by calculating the distance to the 
+    nearest n points for each point, sorting and plotting the results. 
+    Then we look to see where the change is most pronounced (think of the angle 
+    between your arm and forearm) and select that as epsilon. We can calculate 
+    the distance from each point to its closest neighbour using the NearestNeighbors. 
+    The point itself is included in n_neighbors. The kneighbors method returns 
+    two arrays, one which contains the distance to the closest n_neighbors points 
+    and the other which contains the index for each of those points.
+    Refer : https://towardsdatascience.com/machine-learning-clustering-dbscan-\
+    determine-the-optimal-value-for-epsilon-eps-python-example-3100091cfbc
+    
+    '''
+    # Choosing optimum epsilon 
+    neigh = NearestNeighbors(n_neighbors=2)
+    nbrs = neigh.fit(feats)
+    distances, indices = nbrs.kneighbors(feats)
+    distances = np.sort(distances, axis=0)
+    distances = distances[:,1]
+    #plt.plot(distances)
+    
+    plt.figure(2)
+    plt.xlabel("Sample Pairs")
+    plt.ylabel("Distances")
+    plt.plot(distances, label='epsilon distances', c='r')
+    plt.title('Pairwise distances between samples')
+    plt.savefig(os.path.join(plot_dir, 'eps_distances.png'), dpi=300)
+#    plt.show()
+    plt.close()
+    
+def plot_dbscan_cls(feats, labs, plot_dir):
+    colors = ['royalblue', 'maroon', 'forestgreen', 'mediumorchid', 'tan', 
+              'deeppink', 'olive', 'goldenrod', 'lightcyan', 'navy']
+    vectorizer = np.vectorize(lambda x: colors[x % len(colors)])
+    plt.scatter(feats[:,0], feats[:,1], c=vectorizer(labs))
+    plt.savefig(os.path.join(plot_dir, 'dbscan_C'+str(len(list(set(labs))))+'.png'), dpi=300)
+    plt.close()
+
 
 def plot_clusters(data, labels, best_tuple, plot_dir, plotname):
     n_clusters = max(labels) + 1
@@ -45,15 +105,21 @@ def plot_clusters(data, labels, best_tuple, plot_dir, plotname):
 #    if plotname=='cluster_pca_ordered.png':
 #        plt.xlim((-1,1))
 #        plt.ylim((-1,1))
-    plt.savefig(os.path.join(plot_dir, str(n_clusters)+'_'+plotname))
-    plt.show()
+    plt.savefig(os.path.join(plot_dir, str(n_clusters)+'_'+plotname), dpi=300)
+#    plt.show()
+    plt.close()
     
-def plot_trajectories3D(stroke_vecs, stroke_names):
+def plot_trajectories3D(stroke_vecs, stroke_names, log_dir):
     '''
     '''
-    stroke_lens = [len(stroke) for strokes in stroke_vecs for stroke in strokes]
-    stroke_names = [name for names in stroke_names for name in names]
-    all_feats = np.vstack([np.vstack(stroke) for strokes in stroke_vecs for stroke in strokes])
+    destPath = os.path.join(log_dir, "visualize3D")
+    if not os.path.isdir(destPath):
+        os.makedirs(destPath)
+#    stroke_lens = [len(stroke) for strokes in stroke_vecs for stroke in strokes]
+#    stroke_names = [name for names in stroke_names for name in names]
+#    all_feats = np.vstack([np.vstack(stroke) for strokes in stroke_vecs for stroke in strokes])
+    stroke_lens = [len(stroke) for stroke in stroke_vecs]
+    all_feats = np.vstack([np.vstack(stroke) for stroke in stroke_vecs])
     
     colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
     
@@ -81,11 +147,12 @@ def plot_trajectories3D(stroke_vecs, stroke_names):
         indx += slen
         
         fig_name = stroke_names[i]+'.png'
-        #fig_name = fig_name_parts[0]+'_'+fig_name_parts[1].split('_', 1)[1]+'.png'
-        #fig.savefig(os.path.join(os.getcwd(), 'lib/visualize/graphs3D_v1', fig_name))
-        plt.show()
+#        fig_name = fig_name_parts[0]+'_'+fig_name_parts[1].split('_', 1)[1]+'.png'
+        fig.savefig(os.path.join(destPath, fig_name), dpi=300)
+#        plt.show()
+        fig.close()
     
-def visualize_evecs(eVals, eVecs):
+def visualize_evecs(eVals, eVecs, plot_dir):
     
     chooseVecs = [1]    # 2nd EVec at col indx 1
     for choice in chooseVecs:
@@ -102,6 +169,7 @@ def visualize_evecs(eVals, eVecs):
         plt.ylabel("Value of x"+str(choice+1))
         plt.plot(x , y, c='r')
         plt.title('Components of EVec'+str(choice+1))
-        #plt.savefig(os.path.join(plot_dir, 'sse_plot.png'))
-        plt.show()
+        plt.savefig(os.path.join(plot_dir, 'evecs_plot.png'), dpi=300)
+#        plt.show()
+        plt.close()
     return

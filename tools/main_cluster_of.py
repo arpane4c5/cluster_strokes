@@ -32,10 +32,7 @@ sns.set()
 # Local Paths
 LABELS = "/home/arpan/VisionWorkspace/Cricket/scripts/supporting_files/sample_set_labels/sample_labels_shots/ICC WT20"
 DATASET = "/home/arpan/VisionWorkspace/VideoData/sample_cricket/ICC WT20"
-# Server Paths
-if os.path.exists("/opt/datasets/cricket/ICC_WT20"):
-    LABELS = "/home/arpan/VisionWorkspace/shot_detection/supporting_files/sample_set_labels/sample_labels_shots/ICC WT20"
-    DATASET = "/opt/datasets/cricket/ICC_WT20"
+CLASS_IDS = "/home/arpan/VisionWorkspace/Cricket/cluster_strokes/configs/Class Index_Strokes.txt"
 
 model_path = "checkpoints/autoenc_gru_resnet50_ep10_w6_Adam.pt"
 SEQ_SIZE = 6
@@ -48,9 +45,10 @@ ANNOTATION_FILE = "stroke_labels.txt"
 def get_autoenc_kmeans(dest_dir):
     print(60*'*')
     # Extract autoencoder features 
-    trajectories, stroke_names = autoenc_feats.extract_sequence_feats(model_path, \
-                                DATASET, LABELS, BATCH_SIZE, SEQ_SIZE, INPUT_SIZE, \
-                                HIDDEN_SIZE, NUM_LAYERS, partition='all', nstrokes=50)
+#    trajectories, stroke_names = autoenc_feats.extract_sequence_feats(model_path, 
+#                                DATASET, LABELS, CLASS_IDS, BATCH_SIZE, SEQ_SIZE, 
+#                                INPUT_SIZE, HIDDEN_SIZE, NUM_LAYERS, partition='all', 
+#                                nstrokes=50)
 #    
     destPath = dest_dir
     if not os.path.exists(destPath):

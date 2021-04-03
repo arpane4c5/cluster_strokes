@@ -15,7 +15,7 @@ import torch.nn as nn
 from torchvision import transforms, datasets
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
-from utils.resnet_feature_extracter import Img2Vec, Clip2Vec
+from features.resnet_feature_extracter import Img2Vec, Clip2Vec
 import numpy as np
 import pandas as pd
 import os
@@ -38,24 +38,13 @@ from sklearn.preprocessing import normalize
 from models.select_backbone import select_resnet
 
 
-# Set the path of the input videos and the openpose extracted features directory
-# Server Paths
 CLASS_IDS = "configs/Class Index_Strokes.txt"
-DATASET = "/opt/datasets/cricket/ICC_WT20"
-POSE_FEATS = "/home/arpan/cricket/output_json"
-BAT_LABELS = "/home/arpan/VisionWorkspace/Cricket/batsman_pose_track/batsman_pose_gt"
-LABELS = "/home/arpan/VisionWorkspace/shot_detection/supporting_files/sample_set_labels/sample_labels_shots/ICC WT20"
-#TRAIN_FRAMES = "/home/arpan/VisionWorkspace/Cricket/batsman_detection/ICC_WT20_frames/train"
-#VAL_FRAMES = "/home/arpan/VisionWorkspace/Cricket/batsman_detection/ICC_WT20_frames/val"
-#TEST_FRAMES = "/home/arpan/VisionWorkspace/Cricket/batsman_detection/ICC_WT20_frames/test"
-#ANNOTATION_FILE = "/home/arpan/VisionWorkspace/Cricket/batsman_pose_track/batsman_pose_gt"
 
 # Local Paths
-if not os.path.exists(DATASET):
-    DATASET = "/home/arpan/VisionWorkspace/VideoData/sample_cricket/ICC WT20"
-    POSE_FEATS = "/home/arpan/VisionWorkspace/Cricket/batsman_pose_track/data/output_json"
-    BAT_LABELS = "/home/arpan/VisionWorkspace/Cricket/batsman_pose_track/batsman_pose_gt"
-    LABELS = "/home/arpan/VisionWorkspace/Cricket/scripts/supporting_files/sample_set_labels/sample_labels_shots/ICC WT20"
+DATASET = "/home/arpan/VisionWorkspace/VideoData/sample_cricket/ICC WT20"
+POSE_FEATS = "/home/arpan/VisionWorkspace/Cricket/batsman_pose_track/data/output_json"
+BAT_LABELS = "/home/arpan/VisionWorkspace/Cricket/batsman_pose_track/batsman_pose_gt"
+LABELS = "/home/arpan/VisionWorkspace/Cricket/scripts/supporting_files/sample_set_labels/sample_labels_shots/ICC WT20"
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 log_dir = "checkpoints"
@@ -267,7 +256,7 @@ if __name__ == '__main__':
 #                                          transform=data_transforms)
     val_dataset = CricketStrokesDataset(val_lst, DATASET, LABELS, CLASS_IDS, 
                                           frames_per_clip=SEQ_SIZE, 
-                                          step_between_clips=int(SEQ_SIZE/2), train=False, 
+                                          step_between_clips=SEQ_SIZE//2, train=False, 
                                           framewiseTransform=False,
                                           transform=clip_transform)
 
@@ -405,7 +394,7 @@ if __name__ == '__main__':
 #        stroke_names = pickle.load(fp)
     
     # plot the strokes as sequence of points
-    plot_utils.plot_trajectories3D(trajectories, stroke_names)
+    plot_utils.plot_trajectories3D(trajectories, stroke_names, log_dir)
     
     #plot_utils.plot_clusters(pca_flows, labels, perm_tuples[best_indx], bins, thresh, 'cluster_pca_ordered.png')
     

@@ -14,7 +14,7 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.cluster import KMeans, DBSCAN
 
-def get_trajectory_mean(trajectories):
+def get_trajectory_mean(trajectories):  # old implementation: deprecated
     '''
     Take a list of trajectory features and return the mean of the trajectories.
     Parameters:
@@ -39,6 +39,54 @@ def get_trajectory_mean(trajectories):
             else:
                 all_feats = np.vstack((all_feats, sum_feats))
     return all_feats
+
+def get_trajectory_mean_from_dict(features, strokes_name_id):
+    '''
+    Take a dict of trajectory features and return the mean of the trajectories.
+    Parameters:
+    -----------
+    features : dict
+        keys are stroke_names and values are float matrix of seq x feature_size.
+        Size is no. of strokes
+    strokes_name_id : list of str
+        keys for features for strokes. Size is no. of strokes
+        
+    Returns:
+    --------
+    2D matrix of size N_strokes x feature_size
+    '''
+    all_feats = None
+    for key in strokes_name_id:
+        stroke_feats = features[key]
+        sum_feats = np.sum(stroke_feats, axis=0)/(stroke_feats.shape[0] + 1)
+        if all_feats is None:
+            all_feats = sum_feats
+        else:
+            all_feats = np.vstack((all_feats, sum_feats))
+    return all_feats
+
+def to_trajectory_list(features, strokes_name_id):
+    '''
+    Receives a dictionary of stroke sequences features and converts to list
+    of stroke features. 
+    Parameters:
+    -----------
+    features : dict
+        {vidname_st_end : np.array(N_{i}, FeatureSize)}
+    strokes_name_id : list
+        list of key values of features, stroke names (of the form : vidname_st_end)
+        
+    Returns:
+    --------
+    trajectories : list of list. Each sublist has N_{i} vectors (np.array(FeatureSize)).
+    '''
+    trajectories = []
+    for key in strokes_name_id:
+        stroke_seq = []
+        for seq_vec in features[key]:
+            stroke_seq.append(seq_vec)
+        trajectories.append(stroke_seq)
+    return trajectories
 
 def apply_PCA(flows, dims=2):
     '''

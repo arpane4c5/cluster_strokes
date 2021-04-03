@@ -4,6 +4,7 @@ import random
 from collections.abc import Iterable
 from PIL import Image
 import torchvision
+import torch
 from torchvision import transforms
 
 class RandomCrop(object):
@@ -31,18 +32,38 @@ class RandomCrop(object):
         """
         t, h, w, c = img.shape
         th, tw = output_size
+        pad_h, pad_w = False, False
+        if w < tw:
+            tw = w
+            pad_w = True
+        if h < th:
+            th = h
+            pad_h = True
         if w == tw and h == th:
-            return 0, 0, h, w
+            return 0, 0, h, w, pad_h, pad_w
 
         i = random.randint(0, h - th) if h!=th else 0
         j = random.randint(0, w - tw) if w!=tw else 0
-        return i, j, th, tw
+        return i, j, th, tw, pad_h, pad_w
 
     def __call__(self, imgs):
         
-        i, j, h, w = self.get_params(imgs, self.size)
-
+        i, j, h, w, pad_h, pad_w = self.get_params(imgs, self.size)
+        
+        
         imgs = imgs[:, i:i+h, j:j+w, :]
+        if pad_h:
+            T, H, W, C = imgs.shape
+            pad_width = self.size[0] - H
+            imgs_padded = torch.zeros((T, H + pad_width, W, C), dtype=imgs.dtype)
+            imgs_padded[:, (pad_width//2):H+(pad_width//2) ] = imgs
+            imgs = imgs_padded
+        if pad_w:
+            T, H, W, C = imgs.shape
+            pad_width = self.size[1] - W
+            imgs_padded = torch.zeros((T, H, W + pad_width, C), dtype=imgs.dtype)
+            imgs_padded[:, :, (pad_width//2):W+(pad_width//2) ] = imgs
+            imgs = imgs_padded
         return imgs
 
     def __repr__(self):
@@ -71,6 +92,18 @@ class CenterCrop(object):
         """
         t, h, w, c = imgs.shape
         th, tw = self.size
+        if h < th:
+            pad_width = self.size[0] - h
+            imgs_padded = torch.zeros((t, h + pad_width, w, c), dtype=imgs.dtype)
+            imgs_padded[:, (pad_width//2):h+(pad_width//2) ] = imgs
+            imgs = imgs_padded
+            t, h, w, c = imgs.shape
+        if w < tw:
+            pad_width = self.size[1] - w
+            imgs_padded = torch.zeros((t, h, w + pad_width, c), dtype=imgs.dtype)
+            imgs_padded[:, :, (pad_width//2):w+(pad_width//2) ] = imgs
+            imgs = imgs_padded
+            t, h, w, c = imgs.shape
         i = int(np.round((h - th) / 2.))
         j = int(np.round((w - tw) / 2.))
 
@@ -98,7 +131,8 @@ class RandomHorizontalFlip(object):
         """
         if random.random() < self.p:
             # t x h x w
-            return np.flip(imgs, axis=2).copy()
+#            return np.flip(imgs, axis=2).copy()
+            return torch.flip(imgs, [2]).clone()
         return imgs
 
     def __repr__(self):
@@ -170,6 +204,21 @@ class ToTensor(object):
     def __call__(self, imgmap):
         totensor = transforms.ToTensor()
         return [totensor(i) for i in imgmap]
+    def __repr__(self):
+        return self.__class__.__name__ + '()'
+
+class ScaledNormMinMax(object):
+    '''Assumed values are in range [0, 1]. Therefore, always call after ToTensor()
+    '''
+    def __call__(self, imgmap, minmax=(0, 255)):
+        return [ i*(minmax[1]-minmax[0]) + minmax[0] for i in imgmap]
+    def __repr__(self):
+        return self.__class__.__name__ + '()'
+
+class ToHMDBTensor(object):
+    def __call__(self, imgmap):
+        totensor = transforms.ToTensor()
+        return torch.stack([totensor(i) for i in imgmap])
     def __repr__(self):
         return self.__class__.__name__ + '()'
 
