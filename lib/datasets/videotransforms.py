@@ -30,7 +30,7 @@ class RandomCrop(object):
         Returns:
             tuple: params (i, j, h, w) to be passed to ``crop`` for random crop.
         """
-        t, h, w, c = img.shape
+        t, c, h, w = img.shape      # when img is (C, H, W)
         th, tw = output_size
         pad_h, pad_w = False, False
         if w < tw:
@@ -51,18 +51,18 @@ class RandomCrop(object):
         i, j, h, w, pad_h, pad_w = self.get_params(imgs, self.size)
         
         
-        imgs = imgs[:, i:i+h, j:j+w, :]
+        imgs = imgs[:, :, i:i+h, j:j+w]
         if pad_h:
-            T, H, W, C = imgs.shape
+            T, C, H, W = imgs.shape
             pad_width = self.size[0] - H
-            imgs_padded = torch.zeros((T, H + pad_width, W, C), dtype=imgs.dtype)
-            imgs_padded[:, (pad_width//2):H+(pad_width//2) ] = imgs
+            imgs_padded = torch.zeros((T, C, H + pad_width, W), dtype=imgs.dtype)
+            imgs_padded[:, :, (pad_width//2):H+(pad_width//2)] = imgs
             imgs = imgs_padded
         if pad_w:
-            T, H, W, C = imgs.shape
+            T, C, H, W = imgs.shape
             pad_width = self.size[1] - W
-            imgs_padded = torch.zeros((T, H, W + pad_width, C), dtype=imgs.dtype)
-            imgs_padded[:, :, (pad_width//2):W+(pad_width//2) ] = imgs
+            imgs_padded = torch.zeros((T, C, H, W + pad_width), dtype=imgs.dtype)
+            imgs_padded[:, :, :, (pad_width//2):W+(pad_width//2) ] = imgs
             imgs = imgs_padded
         return imgs
 
@@ -90,24 +90,24 @@ class CenterCrop(object):
         Returns:
             PIL Image: Cropped image.
         """
-        t, h, w, c = imgs.shape
+        t, c, h, w = imgs.shape
         th, tw = self.size
         if h < th:
             pad_width = self.size[0] - h
-            imgs_padded = torch.zeros((t, h + pad_width, w, c), dtype=imgs.dtype)
-            imgs_padded[:, (pad_width//2):h+(pad_width//2) ] = imgs
+            imgs_padded = torch.zeros((t, c, h + pad_width, w), dtype=imgs.dtype)
+            imgs_padded[:, :, (pad_width//2):h+(pad_width//2) ] = imgs
             imgs = imgs_padded
-            t, h, w, c = imgs.shape
+            t, c, h, w = imgs.shape
         if w < tw:
             pad_width = self.size[1] - w
-            imgs_padded = torch.zeros((t, h, w + pad_width, c), dtype=imgs.dtype)
-            imgs_padded[:, :, (pad_width//2):w+(pad_width//2) ] = imgs
+            imgs_padded = torch.zeros((t, c, h, w + pad_width), dtype=imgs.dtype)
+            imgs_padded[:, :, :, (pad_width//2):w+(pad_width//2) ] = imgs
             imgs = imgs_padded
-            t, h, w, c = imgs.shape
+            t, c, h, w = imgs.shape
         i = int(np.round((h - th) / 2.))
         j = int(np.round((w - tw) / 2.))
 
-        return imgs[:, i:i+th, j:j+tw, :]
+        return imgs[:, :, i:i+th, j:j+tw]
 
 
     def __repr__(self):
@@ -132,7 +132,7 @@ class RandomHorizontalFlip(object):
         if random.random() < self.p:
             # t x h x w
 #            return np.flip(imgs, axis=2).copy()
-            return torch.flip(imgs, [2]).clone()
+            return torch.flip(imgs, [3]).clone()
         return imgs
 
     def __repr__(self):
@@ -234,3 +234,29 @@ class Normalize(object):
         return [normalize(i) for i in imgmap]
     def __repr__(self):
         return self.__class__.__name__ + '(mean={}, std={})'.format(self.mean, self.std)
+
+class FiveCrop(object):
+    '''FiveCrop for video clips. 
+    '''
+    def __init__(self, size):
+        if isinstance(size, numbers.Number):
+            self.size = (int(size), int(size))
+        else:
+            self.size = size
+        
+    def __call__(self, imgs):
+        """
+        Args:
+            img (PIL Image or Tensor or list of PIL): Images to be cropped.
+        Returns:
+            PIL Image: Tuples of Cropped images.
+        """
+        fiveCrop = transforms.FiveCrop(self.size)
+        crops = [fiveCrop(i) for i in imgs]
+#        cropped_tups = transforms.Lambda(lambda crop: torch.stack([transforms.ToTensor()(crop) \
+#                                                                   for crop in crops]))
+        return crops        
+    
+    def __repr__(self):
+        return self.__class__.__name__ + '(size={0})'.format(self.size)
+    

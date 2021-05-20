@@ -1,6 +1,3 @@
-
-import sys
-sys.path.insert(0, '../../../../pytorch-i3d')
 import torch 
 import torch.nn.functional as F
 from torch import nn
@@ -8,7 +5,6 @@ import numpy as np
 import math 
 import torchvision
 from torch.autograd import Variable
-from pytorch_i3d import InceptionI3d
 
 # Standard 2 layerd FFN of transformer
 class FeedForward(nn.Module):
@@ -121,9 +117,9 @@ class TX(nn.Module):
 class Block_head(nn.Module):
     def __init__(self, d_model=64 , dropout = 0.3 ):
         super(Block_head, self).__init__()
-        self.T1 = TX(d_model)
-        self.T2 = TX(d_model)
-        self.T3 = TX(d_model)
+        self.T1 = TX()
+        self.T2 = TX()
+        self.T3 = TX()
     def forward(self, q, k, v, mask=None):
         q = self.T1(q,k,v)
         q = self.T2(q,k,v)
@@ -135,9 +131,9 @@ class Tail(nn.Module):
     def __init__(self, num_classes , num_frames, head=16):
         super(Tail, self).__init__()
         self.spatial_h = 7
-        self.spatial_w = 7
+        self.spatial_w = 4
         self.head = head
-        self.num_features = 1024
+        self.num_features = 2048
         self.num_frames = num_frames 
         self.d_model = self.num_features // 2
         self.d_k = self.d_model // self.head
@@ -145,11 +141,11 @@ class Tail(nn.Module):
         self.bn2 = Norm(self.d_model, trainable=False)
         
         self.pos_embd = PositionalEncoder(self.num_features, self.num_frames)
-        self.Qpr = nn.Conv2d(self.num_features, self.d_model, kernel_size=(7,7), stride=1, padding=0, bias=False)
+        self.Qpr = nn.Conv2d(self.num_features, self.d_model, kernel_size=(7,4), stride=1, padding=0, bias=False)
 
         self.head_layers =[]
         for i in range(self.head):
-            self.head_layers.append(Block_head(self.d_k))
+            self.head_layers.append(Block_head())
 
         self.list_layers = nn.ModuleList(self.head_layers)
         self.classifier = nn.Linear(self.d_model, num_classes)
@@ -201,44 +197,30 @@ class Tail(nn.Module):
 # base is resnet
 # Tail is the main transormer network 
 class Semi_Transformer(nn.Module):
-    def __init__(self, num_classes, seq_len, model=None):
+    def __init__(self, num_classes, seq_len):
         super(Semi_Transformer, self).__init__()
         self.num_classes = num_classes
         self.seq_len = seq_len
-#        resnet50 = torchvision.models.resnet50(pretrained=True)
-#        self.base = nn.Sequential(*list(resnet50.children())[:-2])
-        self.i3d = InceptionI3d(400, in_channels=3)
-        if model is not None:
-            print("Loading model : {}".format(model))
-            self.i3d.load_state_dict(torch.load(model))
-#        self.base = nn.Sequential(*list(i3d.children())[:-2])
-        self.tail = Tail(num_classes, seq_len, head=16)
+        resnet50 = torchvision.models.resnet50(pretrained=True)
+        self.base = nn.Sequential(*list(resnet50.children())[:-2])
+        self.tail = Tail(num_classes, seq_len)
 
-    def forward(self, x):
+    def forward(self, x, bb):
         b = x.size(0)
-#        t = x.size(1)
-#        x = x.view(b*t, x.size(2), x.size(3), x.size(4))
-        t = x.size(2)
-        x = self.i3d.extract_layer_features(x, "Mixed_5c")  # Mixed_5c
-        # output = T/4, H/16, W/16 (8, 14, 14) 
-        # Pass this to an RPN to generate person BBoxes
-        x = x.transpose(1, 2)
-        x = x.reshape(b*x.size(1), x.size(2), x.size(3), x.size(4))
-        # x: (8,832,14,14) (t,dim,h,w) for Mixed_4f,  (4, 1024, 7, 7) for Mixed_5c
-        return self.tail(x, b, x.size(0) // b)
+        t = x.size(1)
+        x = x.view(b*t, x.size(2), x.size(3), x.size(4))
+        x = self.base(x)
+        # x: (b,t,2048,7,4)
+        return self.tail(x, b , t )
         
-if __name__ == '__main__':
-    
-    pretrained_model_path = '/home/arpan/VisionWorkspace/pytorch-i3d/models/rgb_imagenet.pt'
-    temporal_len = 32
-    i3dfeat_seq_len = temporal_len // 8  # for Mixed_5c layer T/8 (2,7,7) for (16,224,224)
-    model = Semi_Transformer(num_classes=8 , seq_len = i3dfeat_seq_len, 
-                             model = pretrained_model_path)
-    
-    model = model.cuda()
-    print("Loaded model ....")
-    inp = torch.randn((2, 3, temporal_len, 224, 224))
-    inp = inp.cuda()
-    out = model(inp)
-    print("Executed !")
-    
+        
+#if __name__ == '__main__':
+#    
+#    max_seq_len = 8
+#    model = Semi_Transformer(num_classes=8 , seq_len = max_seq_len)
+#    model = model.cuda()
+#    print("Loaded model ....")
+#    inp = torch.randn((4, 8, 3, 224, 112))
+#    inp = inp.cuda()
+#    out = model(inp)
+#    print("Executed !")
