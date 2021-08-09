@@ -704,7 +704,7 @@ class CricketStrokesBBoxesWithPoseDataset(VisionDataset):
             return None
     
     def generateSequences(self):
-        '''Generate samples having first N clips of strokes
+        '''Generate samples from first bb_nframes frames of strokes (having only batsman)
         '''
         vid_clip_idx = [self.video_clips.get_clip_location(i) \
                         for i in range(self.video_clips.num_clips())]
@@ -713,7 +713,7 @@ class CricketStrokesBBoxesWithPoseDataset(VisionDataset):
                    str(self.video_clips.stroke_tuples[vidx][1]) \
                    for (vidx, clidx) in vid_clip_idx]
 
-        # filter the clips having 
+        # filter the clips having only batsman poses
         vid_clip_idx_bool = [cid <= ((self.bbox_feats[strokes[i]].shape[0] \
                                      - self.frames_per_clip) / self.step_between_clips) \
                              for i, (vid, cid) in enumerate(vid_clip_idx)]
@@ -819,9 +819,9 @@ class CricketStrokesBBoxesAugDataset(VisionDataset):
         self.bbox_snames_paths = bbox_snames_paths
         self.read_bbox_coords()
         if train:
-            self.sq_crop = 112  #pass as param
+            self.sq_crop = 224  #pass as param
         else:
-            self.sq_crop = 56
+            self.sq_crop = 112
         
         self.class_by_idx_label = self.load_labels_index_file(class_ids_path)
         extensions = ('avi', 'mp4', )

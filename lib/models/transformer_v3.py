@@ -5,6 +5,7 @@ import numpy as np
 import math 
 import torchvision
 from torch.autograd import Variable
+from torchvision.ops import roi_pool
 
 # Standard 2 layerd FFN of transformer
 class FeedForward(nn.Module):
@@ -142,6 +143,7 @@ class Tail(nn.Module):
         
         self.pos_embd = PositionalEncoder(self.num_features, self.num_frames)
         self.Qpr = nn.Conv2d(self.num_features, self.d_model, kernel_size=(7,4), stride=1, padding=0, bias=False)
+        self.KVpr = nn.Conv2d(self.num_features, self.d_model, kernel_size=(7,4), stride=1, padding=0, bias=False)
 
         self.head_layers =[]
         for i in range(self.head):
@@ -162,14 +164,16 @@ class Tail(nn.Module):
         # stabilizes the learning
         x = x.view(b , t , self.num_features , self.spatial_h , self.spatial_w)
         x = self.pos_embd(x)
+        
+        q = F.relu(self.Qpr(x[:, t//2, ...]))
         x = x.view(-1, self.num_features , self.spatial_h , self.spatial_w)
-        x = F.relu(self.Qpr(x))
+        x = F.relu(self.KVpr(x))
         # x: (b,t,1024,1,1) since its a convolution: spatial positional encoding is not added 
         # paper has a different base (resnet in this case): which 2048 x 7 x 4 vs 16 x 7 x 7 
         x = x.view(-1, t ,  self.d_model )
         x = self.bn2(x)
         # stabilization
-        q = x[:,t//2,:] #middle frame is the query
+#        q = x[:,t//2,:] #middle frame is the query
         v = x # value
         k = x #key 
 
@@ -203,24 +207,29 @@ class Semi_Transformer(nn.Module):
         self.seq_len = seq_len
         resnet50 = torchvision.models.resnet50(pretrained=True)
         self.base = nn.Sequential(*list(resnet50.children())[:-2])
+#        self.roi = RoIPool([7,4])
         self.tail = Tail(num_classes, seq_len)
 
-    def forward(self, x, bb):
+    def forward(self, x):
         b = x.size(0)
         t = x.size(1)
         x = x.view(b*t, x.size(2), x.size(3), x.size(4))
         x = self.base(x)
+        # generate bboxes
+#        bb = torch.ones((6,5)) * 0.5
+#        bb = bb.cuda()
+#        tmp = roi_pool(x, bb, (7, 4), 1.0)
         # x: (b,t,2048,7,4)
         return self.tail(x, b , t )
         
         
-#if __name__ == '__main__':
-#    
-#    max_seq_len = 8
-#    model = Semi_Transformer(num_classes=8 , seq_len = max_seq_len)
-#    model = model.cuda()
-#    print("Loaded model ....")
-#    inp = torch.randn((4, 8, 3, 224, 112))
-#    inp = inp.cuda()
-#    out = model(inp)
-#    print("Executed !")
+if __name__ == '__main__':
+    
+    max_seq_len = 8
+    model = Semi_Transformer(num_classes=8 , seq_len = max_seq_len)
+    model = model.cuda()
+    print("Loaded model ....")
+    inp = torch.randn((4, 8, 3, 224, 112))
+    inp = inp.cuda()
+    out = model(inp)
+    print("Executed !")

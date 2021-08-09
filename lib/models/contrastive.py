@@ -3,8 +3,8 @@ import torch.nn
 
 import os
 os.environ["GEOMSTATS_BACKEND"] = "pytorch"
-import geomstats.backend as gs
-from geomstats.geometry.hypersphere import HypersphereMetric
+#import geomstats.backend as gs
+#from geomstats.geometry.hypersphere import HypersphereMetric
 #torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
 

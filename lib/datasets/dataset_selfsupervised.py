@@ -16,14 +16,11 @@ import json
 
 import numpy as np
 import torch
-from torchnet.dataset import BatchDataset
-from torchnet.dataset.dataset import Dataset
 
 #from torchvision.datasets import UCF101
 from torchvision import transforms
 from io import open
 
-import glob
 import os
 import pickle
 #import utils
@@ -192,9 +189,11 @@ class CricketStrokeClipsDataset(VisionDataset):
             if self.framewiseTransform:
                 if isinstance(self.transform, transforms.Compose):
                     # transform frame-wise (takes input as HxWxC)
-                    video1 = torch.stack([self.transform(i) for i in video1])
-                    video2 = torch.stack([self.transform(i) for i in video2])
+                    video1 = torch.stack([self.transform(i.permute(2, 0, 1)) for i in video1])
+                    video2 = torch.stack([self.transform(i.permute(2, 0, 1)) for i in video2])
             else:   # clip level transform (takes input as TxHxWxC)
+                video1 = video1.permute(0, 3, 1, 2)
+                video2 = video2.permute(0, 3, 1, 2)
                 video1 = self.transform(video1)
                 video2 = self.transform(video2)
             
@@ -421,6 +420,7 @@ class StrokeFeaturePairsDataset(VisionDataset):
         '''Generate positive and negative pair samples for self supervised 
         training using contrastive loss
         '''
+        import pickle
         vid_clip_idx = [self.video_clips.get_clip_location(i) \
                         for i in range(self.video_clips.num_clips())]
         strokes = [self.video_clips.video_paths[vidx]+"_"+\
@@ -428,6 +428,7 @@ class StrokeFeaturePairsDataset(VisionDataset):
                    str(self.video_clips.stroke_tuples[vidx][1]) \
                    for (vidx, clidx) in vid_clip_idx]
         pairs, pos_pairs, neg_pairs = [], [], []
+        
         # create positive pair samples, take future context as target
         prev = strokes[0]
         for i in range(0, len(strokes), future_step): 
@@ -438,16 +439,38 @@ class StrokeFeaturePairsDataset(VisionDataset):
                 pos_pairs.append([vid_clip_idx[i - future_step], vid_clip_idx[i]])
             else:
                 prev = s
+        
+        nSamps = len(pos_pairs)
+        pairs_file = None
+        if os.path.isfile("pairs_train_F"+str(future_step)+"_"+str(2*nSamps)+".pkl"):
+            pairs_file = "pairs_train_F"+str(future_step)+"_"+str(2*nSamps)+".pkl"
+        elif os.path.isfile("pairs_val_F"+str(future_step)+"_"+str(2*nSamps)+".pkl"):
+            pairs_file = "pairs_val_F"+str(future_step)+"_"+str(2*nSamps)+".pkl"
+        elif os.path.isfile("pairs_test_F"+str(future_step)+"_"+str(2*nSamps)+".pkl"):
+            pairs_file = "pairs_test_F"+str(future_step)+"_"+str(2*nSamps)+".pkl"
+        
+        if pairs_file is not None:
+            with open(pairs_file, "rb") as fp:
+                pairs = pickle.load(fp)
+            return pairs
+        
 #        neg_idx_all = random.sample(list(range(len(strokes))), len(strokes))
         # create negative pair samples, take clips from other strokes as target
         for i in range(0, len(strokes), future_step):
             neg_pairs.append(self.sample_easy_neg(vid_clip_idx, strokes, i, 
                                                   self.frames_per_clip, 
                                                   self.extracted_frames_per_clip))
+            print("{} / {}".format(i, len(strokes)))
         for i in range(min(len(pos_pairs), len(neg_pairs))):
             pairs.append((pos_pairs[i], 1))
             pairs.append((neg_pairs[i], 0))
-            
+        # write the pairs list to disk as it takes lot of time.
+        if self.train:
+            with open("pairs_train_F"+str(future_step)+"_"+str(2*nSamps)+".pkl", "wb") as fp:
+                pickle.dump(pairs, fp)
+        else:
+            with open("pairs_val_F"+str(future_step)+"_"+str(2*nSamps)+".pkl", "wb") as fp:
+                pickle.dump(pairs, fp)
         return pairs
     
     def sample_easy_neg(self, vid_clip_idx, strokes, ref_clip_idx, seq_size, ex_fpc):
