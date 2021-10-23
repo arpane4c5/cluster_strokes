@@ -412,7 +412,7 @@ class StrokeFeaturePairsDataset(VisionDataset):
     """
 
     def __init__(self, feat_path, videos_list, dataset_path, strokes_dir, class_ids_path, 
-                 frames_per_clip, extracted_frames_per_clip=16, step_between_clips=1, 
+                 frames_per_clip, extracted_frames_per_clip=16, step_between_clips=1, fstep=1, 
                  train=True, frame_rate=None, framewiseTransform=True, transform=None, 
                  _precomputed_metadata=None, num_workers=1, _video_width=0, 
                  _video_height=0, _video_min_dimension=0, _audio_samples=0):
@@ -425,6 +425,7 @@ class StrokeFeaturePairsDataset(VisionDataset):
         assert os.path.isfile(class_ids_path), "File does not exist. {}".format(class_ids_path)
         assert os.path.exists(strokes_dir), "Path does not exist. {}".format(strokes_dir)
         self.strokes_dir = strokes_dir
+        self.fstep = fstep
         
         with open(feat_path, "rb") as fp:
             self.features = pickle.load(fp)
@@ -449,7 +450,7 @@ class StrokeFeaturePairsDataset(VisionDataset):
         # self.video_clips = video_clips.subset(self.indices)
         self.framewiseTransform = framewiseTransform
         self.transform = transform
-        self.pairs = self.generateSequencePairs()
+        self.pairs = self.generateSequencePairs(fstep=self.fstep)
         
     def read_stroke_labels(self, video_list):
         
@@ -483,7 +484,7 @@ class StrokeFeaturePairsDataset(VisionDataset):
     def __len__(self):
         return len(self.pairs)
     
-    def generateSequencePairs(self):
+    def generateSequencePairs(self, fstep=1):
         
         vid_clip_idx = [self.video_clips.get_clip_location(i) \
                         for i in range(self.video_clips.num_clips())]
@@ -493,13 +494,15 @@ class StrokeFeaturePairsDataset(VisionDataset):
                    for (vidx, clidx) in vid_clip_idx]
         pairs = []
         prev = strokes[0]
-        for i, s in enumerate(strokes):
-            if i==0:
-                continue
-            if s == prev:
-                pairs.append([vid_clip_idx[i-1], vid_clip_idx[i]])
+        i = fstep
+        while i < len(strokes):
+            if strokes[i] == prev:
+                pairs.append([vid_clip_idx[i-fstep], vid_clip_idx[i]])
+                i += 1
             else:
-                prev = s                
+                prev = strokes[i]
+                i += fstep
+            
         return pairs
         
     def __getitem__(self, idx):

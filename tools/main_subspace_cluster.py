@@ -49,6 +49,7 @@ IDT_FEATS = "/home/arpan/VisionWorkspace/Cricket/StrokeAttention/logs/idt_stroke
 CLASS_IDS = "/home/arpan/VisionWorkspace/Cricket/cluster_strokes/configs/Class Index_Strokes.txt"
 ANNOTATION_FILE_3C = "/home/arpan/VisionWorkspace/Cricket/CricketStrokeLocalizationBOVW/stroke_labels.txt"
 ANNOTATION_FILE_5C = "/home/arpan/VisionWorkspace/Cricket/CricketStrokeLocalizationBOVW/shots_classes.txt"
+ANNOTATION_FILE_8C = "/home/arpan/VisionWorkspace/Cricket/stroke_recognition/config/stroke_types_classes.txt"
 
 # Server Paths
 if os.path.exists("/opt/datasets/cricket/ICC_WT20"):
@@ -99,6 +100,8 @@ def apply_kmeans(mean_feats, row_names, log_dir, nclasses=3, write_strokes=False
         annotation_path = ANNOTATION_FILE_3C
     elif nclasses == 5:
         annotation_path = ANNOTATION_FILE_5C
+    elif nclasses == 8:
+        annotation_path = ANNOTATION_FILE_8C
         
     print("KMeans Clustering for {} clusters... ".format(nclasses))
     km = traj_utils.kmeans(mean_feats, nclasses)
@@ -148,23 +151,23 @@ def apply_spectral(trajectories, row_names, mean_feats, log_dir, similarity='euc
     print("Path : ", log_dir)
     if not os.path.isfile(aff_mat_filepath):
         # affinity mat with normalized rows (rows summed to 1, diag elements 0)
-        affinity_mat = spectral_utils.compute_affinity_matrix(X, 1, similarity, eps, delta)
+        affinity_mat = spectral_utils.compute_affinity_matrix(X, 20, similarity, eps, delta)
         np.save(aff_mat_filepath, affinity_mat)
     affinity_mat = np.load(aff_mat_filepath)
     
     ###########################################################################
     # Use thresholding for affinity matrix using DFS and visualize Eigen Vecs
     g_mean, g_sigma = norm.fit(affinity_mat)
-#    print("----  1 - Normed dist -----")
-#    normed_dist = affinity_mat/np.max(affinity_mat)
-#    sim_aff = 1-normed_dist
+    print("----  1 - Normed dist -----")
+    normed_dist = affinity_mat/np.max(affinity_mat)
+    sim_aff = 1-normed_dist
 #    print("----  RBF kernel (exp(-d^2/2sigma^2)) -----")
 #    if similarity is 'corr' or similarity is 'euclidean':
 #        affinity_mat = affinity_mat/np.max(affinity_mat)
 #        g_sigma = 1
 #    sim_aff = np.exp(- affinity_mat ** 2 / (2. * g_sigma ** 2))
-    print("----  d by sigma -----")
-    sim_aff = np.exp(- affinity_mat / affinity_mat.std())
+#    print("----  d by sigma -----")
+#    sim_aff = np.exp(- affinity_mat / affinity_mat.std())
 #    # Threshold the affinity_mat 
 #    th_idx, threshold_vals = spectral_utils.find_edge_threshold(sim_aff)
 #    threshold = threshold_vals[th_idx]
@@ -205,6 +208,8 @@ def apply_spectral(trajectories, row_names, mean_feats, log_dir, similarity='euc
         annotation_path = ANNOTATION_FILE_3C
     elif nclasses == 5:
         annotation_path = ANNOTATION_FILE_5C
+    elif nclasses == 8:
+        annotation_path = ANNOTATION_FILE_8C
         
     spectral_model = SpectralClustering(n_clusters=nclasses, affinity='precomputed', 
                                         random_state=123)
@@ -286,7 +291,8 @@ def cluster_feats(base_name, log_dir, ft_files, ft_snames, ft_type="hoof", mth=2
 #        log_dir = os.path.join(log_dir, "transformerMulti/HA_OF20MagAng_HOOF20_HOG_seq30_step29_C200")
 #        log_dir = os.path.join(log_dir, "transformer_seq30_step29_SA_C200_tmp_LR5_EP30") #"transformer_seq30_step29")
 #        log_dir = os.path.join(log_dir, "transformerSelfsup/SA_OF20_seq30_step29_C200")
-        log_dir = os.path.join(log_dir, "transformerSelfsup/SA_hoofDenFalse_b40_mth2_seq30_step29_C200")
+#        log_dir = os.path.join(log_dir, "transformerSelfsup/SA_hoofDenFalse_b40_mth2_seq30_step29_C200")
+        log_dir = os.path.join(log_dir, "transformerSelfsup/HA_OF20_seq30_C300_HardF1")
     elif ft_type == "of20_SA_C1000":
         print("Soft assignment sequences for OF20 features with KMeans C1000 :")
         log_dir = os.path.join(log_dir, "of20_SA_C1000")
@@ -298,8 +304,8 @@ def cluster_feats(base_name, log_dir, ft_files, ft_snames, ft_type="hoof", mth=2
         log_dir = os.path.join(log_dir, "conv_vae_seq8")
     elif ft_type == "batsman_gt":
         print("Batsman Poses GT :")
-#        log_dir = os.path.join(log_dir, "batsman_gt_hoof")
-        log_dir = os.path.join(log_dir, "batsman_gt_poses_fillNA")
+#        log_dir = os.path.join(log_dir, "batsman_gt_bboxes")
+        log_dir = os.path.join(log_dir, "batsman_gt_poses")
     elif ft_type == "selfsup_gru":
         print("Siamese GRU network :")
 #        log_dir = os.path.join(log_dir, "siamgru/of20_Hidden256")
@@ -386,16 +392,16 @@ def cluster_feats(base_name, log_dir, ft_files, ft_snames, ft_type="hoof", mth=2
     all_feats = normalize(all_feats, norm='l2')
     
     # standardize feats to have Mean=0 and SD=1
-    features = standardize_feats(features, strokes_name_id)
+#    features = standardize_feats(features, strokes_name_id)
     
     ###################################################################
     # Convert stroke feats to sequence of stroke vectors
     trajectories = traj_utils.to_trajectory_list(features, strokes_name_id)
     
-    if clustering is 'kmeans':
+    if clustering == 'kmeans':
         acc = apply_kmeans(all_feats, strokes_name_id, log_dir, nclasses, write_strokes)
     
-    elif clustering is 'spectral':
+    elif clustering == 'spectral':
         threshold = None  # 50000
         acc = apply_spectral(trajectories, strokes_name_id, all_feats, log_dir, 
                              similarity, nclasses, threshold, write_strokes, eps, delta)
@@ -406,6 +412,7 @@ def cluster_feats(base_name, log_dir, ft_files, ft_snames, ft_type="hoof", mth=2
 def main(sim):    
     base_path = "/home/arpan/VisionWorkspace/Cricket/CricketStrokeLocalizationBOVW/logs"
 #    base_path = "/home/arpan/VisionWorkspace/Cricket/StrokeAttention/logs"
+#    base_path = "/home/arpan/VisionWorkspace/Cricket/StrokeSelfSupervision/logs"
     if not os.path.exists(base_path):
         base_path = "/home/arpan/DATA_Drive2/Cricket/Workspace/CricketStrokeLocalizationBOVW/logs"
 #        base_path = "/home/arpan/DATA_Drive2/Cricket/Workspace/StrokeAttention/logs"
@@ -414,7 +421,7 @@ def main(sim):
     clustering = 'spectral'  # 'kmeans' , 'spectral'
 #    similarity =  'corr' # 'corr' #'dtw' # 'euclidean' 'hausdorff'
     similarity = sim
-    NCLASSES = 5
+    NCLASSES = 8
     WRITE_STROKES = False
     # Features Types : 'hoof', 'ofgrid', ,'2dcnn', '3dcnn', 'autoenc', 'transformer', 'of20_SA_C1000'
     # 'attention', "conv_vae", "batsman_gt", "selfsup_gru", 'hog'
@@ -541,25 +548,36 @@ def main(sim):
 #                        "test" : "batsman_gt_snames_test"+".pkl"}
             
             ######################################################################
-    #        # Batsman HOOF for BBoxes GT 
-    #        folder_name = "bow_HL_batsman_hoof"
-    #        ft_files = {"train": "hoof_gt_feats"+".pkl",
-    #                    "val": "hoof_gt_feats_val"+".pkl",
-    #                    "test" : "hoof_gt_feats_test"+".pkl"}
-    #        ft_snames = {"train": "hoof_gt_snames"+".pkl",
-    #                    "val": "hoof_gt_snames_val"+".pkl",
-    #                    "test" : "hoof_gt_snames_test"+".pkl"}
+#            # Batsman HOOF for BBoxes GT 
+#            folder_name = "bow_HL_batsman_hoof"
+#            ft_files = {"train": "hoof_gt_feats"+".pkl",
+#                        "val": "hoof_gt_feats_val"+".pkl",
+#                        "test" : "hoof_gt_feats_test"+".pkl"}
+#            ft_snames = {"train": "hoof_gt_snames"+".pkl",
+#                        "val": "hoof_gt_snames_val"+".pkl",
+#                        "test" : "hoof_gt_snames_test"+".pkl"}
             
             ######################################################################
             # Batsman Pose KeyPoints GT 
-#            folder_name = "bow_HL_batsman_poses"
-            folder_name = "bow_HL_batsman_poses_fillNA"
+            folder_name = "bow_HL_batsman_poses"
+#            folder_name = "bow_HL_batsman_poses_fillNA"
             ft_files = {"train": "kp_gt_feats"+".pkl",
                         "val": "kp_gt_feats_val"+".pkl",
                         "test" : "kp_gt_feats_test"+".pkl"}
             ft_snames = {"train": "kp_gt_snames"+".pkl",
                         "val": "kp_gt_snames_val"+".pkl",
                         "test" : "kp_gt_snames_test"+".pkl"}
+            
+            #######################################################################
+#            # Seq2Seq/SelfSup Trained Transformer (Seq=30, HA, C=300)
+##            folder_name = "bovtrans_seq2seq/HA_of20_Hidden200_C300_SSFuturePred"
+#            folder_name = "bovtrans_selfsup/HA_of20_Hidden200_C300_HardF1"
+#            ft_files = {"train": "trans_feats.pkl",
+#                        "val": "trans_feats_val.pkl",
+#                        "test" : "trans_feats_test.pkl"}
+#            ft_snames = {"train": "trans_snames.pkl",
+#                        "val": "trans_snames_val.pkl",
+#                        "test" : "trans_snames_test.pkl"}
             
             #######################################################################
 #            # Transformer trained and extracted features
